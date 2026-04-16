@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anti-Gaming Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Anti-Gaming Web App</p>
+          <h1>合規風險監控儀表板</h1>
+          <p>
+            針對微學習平台中的快速亂點、盲猜測驗、頻繁切頁等異常行為，
+            提供 Risk Inbox、Forensic Timeline 與主管審核流程。
+          </p>
+        </div>
+        <div class="hero-status">
+          <div class="status-card">
+            <span>Backend API</span>
+            <strong id="api-health">檢查中</strong>
+          </div>
+          <div class="status-card">
+            <span>Database</span>
+            <strong id="db-health">檢查中</strong>
+          </div>
+        </div>
+      </header>
+
+      <section class="panel readiness-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">System Readiness</p>
+            <h2>本機啟動檢查</h2>
+          </div>
+        </div>
+        <div class="readiness-grid">
+          <article class="card readiness-card">
+            <h3>目前狀態</h3>
+            <div id="readiness-checks" class="readiness-list"></div>
+          </article>
+          <article class="card readiness-card">
+            <h3>下一步建議</h3>
+            <div id="readiness-guidance" class="readiness-guidance">
+              <p class="muted">系統正在檢查 backend 與 database 狀態。</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="overview-grid" id="overview-grid"></section>
+
+      <section class="panel demo-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Demo Checklist</p>
+            <h2>交件前快速確認</h2>
+          </div>
+        </div>
+        <div class="demo-grid">
+          <article class="card demo-card">
+            <h3>已建立案例</h3>
+            <div id="seeded-cases" class="seeded-case-list"></div>
+          </article>
+          <article class="card demo-card">
+            <h3>展示順序</h3>
+            <div class="demo-checklist">
+              <p>1. 確認 `System Readiness` 三個狀態都顯示正常。</p>
+              <p>2. 從 `已建立案例` 快速切到任一 flag，展示 Risk Inbox 與 Detail。</p>
+              <p>3. 點 `Demo Scenarios` 跑一個新案例，觀察自動新增 flag。</p>
+              <p>4. 在 `Resolution Action Bar` 完成主管審核。</p>
+              <p>5. 最後展示 `Audit Trail` 已留下操作紀錄。</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel flow-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Testing Flow</p>
+            <h2>Session 建立與事件模擬</h2>
+          </div>
+        </div>
+
+        <section class="card scenario-card">
+          <div class="panel-head compact">
+            <div>
+              <p class="eyebrow">Demo Scenarios</p>
+              <h3>一鍵模擬典型案例</h3>
+            </div>
+          </div>
+          <div class="scenario-grid">
+            <button type="button" class="scenario-button" data-scenario="impossible_speed">
+              <strong>不可能的完成速度</strong>
+              <span>快速完成課程，產生高風險 flag</span>
+            </button>
+            <button type="button" class="scenario-button" data-scenario="blind_guessing">
+              <strong>盲猜略過測驗</strong>
+              <span>4 秒交卷且得分 0，產生中風險 flag</span>
+            </button>
+            <button type="button" class="scenario-button" data-scenario="context_switch">
+              <strong>高頻切換視窗</strong>
+              <span>多次切頁後完成課程，產生高風險 flag</span>
+            </button>
+          </div>
+          <p id="scenario-status" class="muted"></p>
+        </section>
+
+        <div class="flow-grid">
+          <section class="card">
+            <h3>1. 建立 Session</h3>
+            <form id="session-form" class="resolution-form">
+              <div class="form-grid">
+                <label>
+                  <span>業務員 ID</span>
+                  <select id="session-agent-id">
+                    <option value="A1028">A1028｜陳冠宇</option>
+                    <option value="A2041">A2041｜林怡君</option>
+                    <option value="A3350">A3350｜黃品蓉</option>
+                  </select>
+                </label>
+                <label>
+                  <span>課程 ID</span>
+                  <select id="session-course-id">
+                    <option value="COURSE-AML-101">COURSE-AML-101｜AML 防制洗錢必修</option>
+                    <option value="COURSE-INV-230">COURSE-INV-230｜投資型保單揭露規範</option>
+                    <option value="COURSE-CROSS-120">COURSE-CROSS-120｜保險商品交叉銷售守則</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                <span>開始時間</span>
+                <input id="session-started-at" type="datetime-local" />
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="primary-button">建立 Session</button>
+                <span id="session-status" class="muted"></span>
+              </div>
+            </form>
+          </section>
+
+          <section class="card">
+            <h3>2. 送出 Session Event</h3>
+            <div class="current-session">
+              <span class="muted">目前 Session ID</span>
+              <strong id="current-session-id">尚未建立</strong>
+            </div>
+            <form id="event-form" class="resolution-form">
+              <div class="form-grid">
+                <label>
+                  <span>事件類型</span>
+                  <select id="event-type">
+                    <option value="session_started">session_started</option>
+                    <option value="card_swiped">card_swiped</option>
+                    <option value="context_switch">context_switch</option>
+                    <option value="quiz_submitted">quiz_submitted</option>
+                    <option value="session_completed">session_completed</option>
+                  </select>
+                </label>
+                <label>
+                  <span>事件時間</span>
+                  <input id="event-timestamp" type="datetime-local" />
+                </label>
+              </div>
+              <label>
+                <span>metadata JSON</span>
+                <textarea id="event-metadata" rows="5" placeholder='{"quiz_seconds":4,"quiz_score":0}'></textarea>
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="primary-button">送出 Event</button>
+                <span id="event-status" class="muted"></span>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel inbox-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Risk Inbox</p>
+              <h2>異常事件列表</h2>
+            </div>
+            <button id="refresh-button" class="ghost-button">重新整理</button>
+          </div>
+
+          <div class="filters">
+            <label>
+              <span>風險等級</span>
+              <select id="severity-filter">
+                <option value="all">全部</option>
+                <option value="high">高</option>
+                <option value="medium">中</option>
+                <option value="low">低</option>
+              </select>
+            </label>
+            <label>
+              <span>處理狀態</span>
+              <select id="status-filter">
+                <option value="all">全部</option>
+                <option value="pending">待審</option>
+                <option value="approved">已核准</option>
+                <option value="voided">已作廢</option>
+                <option value="escalated_to_hr">已升級 HR</option>
+              </select>
+            </label>
+            <label class="query-field">
+              <span>關鍵字</span>
+              <input id="query-input" type="search" placeholder="搜尋業務員、課程、規則" />
+            </label>
+          </div>
+
+          <div id="flag-list" class="flag-list"></div>
+        </aside>
+
+        <main class="panel detail-panel">
+          <div id="detail-empty" class="detail-empty">
+            <p class="eyebrow">Flag Detail</p>
+            <h2>選擇一筆異常事件</h2>
+            <p>查看規則命中原因、Session 指標、Timeline 與稽核紀錄。</p>
+          </div>
+
+          <div id="detail-view" class="detail-view hidden">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Flag Detail</p>
+                <h2 id="detail-title"></h2>
+                <p id="detail-subtitle" class="muted"></p>
+              </div>
+              <div id="detail-badges" class="badge-row"></div>
+            </div>
+
+            <div class="detail-grid">
+              <section class="card">
+                <h3>規則命中摘要</h3>
+                <div id="rule-summary" class="key-value-list"></div>
+              </section>
+              <section class="card">
+                <h3>Session 指標</h3>
+                <div id="session-summary" class="key-value-list"></div>
+              </section>
+            </div>
+
+            <section class="card">
+              <div class="panel-head compact">
+                <div>
+                  <p class="eyebrow">Forensic Timeline</p>
+                  <h3>事件時間軸</h3>
+                </div>
+              </div>
+              <div id="timeline-list" class="timeline-list"></div>
+            </section>
+
+            <section class="card">
+              <div class="panel-head compact">
+                <div>
+                  <p class="eyebrow">Resolution Action Bar</p>
+                  <h3>主管審核</h3>
+                </div>
+              </div>
+              <form id="resolution-form" class="resolution-form">
+                <div class="form-grid">
+                  <label>
+                    <span>主管 ID</span>
+                    <input id="manager-id" value="M208" required />
+                  </label>
+                  <label>
+                    <span>處理動作</span>
+                    <select id="resolution-action">
+                      <option value="approved">核准</option>
+                      <option value="voided">作廢重修</option>
+                      <option value="escalated_to_hr">升級 HR</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  <span>備註說明</span>
+                  <textarea id="resolution-note" rows="3" placeholder="輸入主管判斷依據"></textarea>
+                </label>
+                <div class="form-actions">
+                  <button type="submit" class="primary-button">送出審核</button>
+                  <span id="resolution-status" class="muted"></span>
+                </div>
+              </form>
+            </section>
+
+            <section class="card">
+              <div class="panel-head compact">
+                <div>
+                  <p class="eyebrow">Audit Trail</p>
+                  <h3>歷史稽核紀錄</h3>
+                </div>
+              </div>
+              <div id="audit-list" class="audit-list"></div>
+            </section>
+          </div>
+        </main>
+      </section>
+    </div>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
