@@ -97,12 +97,5 @@
   - 完成 resolution
   - 寫入 audit log
 
-## 本機啟動
-請參考：
-- [LOCAL_RUNBOOK.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/LOCAL_RUNBOOK.md)
-
-## 其他交付文件
-- [DEVELOPMENT_SUMMARY.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/DEVELOPMENT_SUMMARY.md)
-
 ## 一句話總結
 這不是單純的學習平台功能，而是一套把學習行為轉成可監管、可審核、可追溯數位證據的合規風險控管系統。
