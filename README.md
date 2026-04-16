@@ -101,14 +101,7 @@
 請參考：
 - [LOCAL_RUNBOOK.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/LOCAL_RUNBOOK.md)
 
-## 展示腳本
-請參考：
-- [DEMO_DAY_SCRIPT.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/DEMO_DAY_SCRIPT.md)
-
 ## 其他交付文件
-- [todo.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/todo.md)
-- [jira-notion-task-list.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/jira-notion-task-list.md)
-- [interview-pitch.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/interview-pitch.md)
 - [DEVELOPMENT_SUMMARY.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/DEVELOPMENT_SUMMARY.md)
 
 ## 一句話總結
