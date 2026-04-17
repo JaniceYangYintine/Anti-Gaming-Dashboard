@@ -205,6 +205,8 @@ sequenceDiagram
 
     M->>FE: 審核決策<br/>(approve / void / escalate)
     FE->>DB: 寫入 compliance_audit_log
+```
+
 ## 目前完成狀態
 - backend 與 database 已可在本機啟動
 - `schema.sql` 已可匯入 PostgreSQL
@@ -217,7 +219,7 @@ sequenceDiagram
   - 觸發 flag
   - 完成 resolution
   - 寫入 audit log
-```
+
 
 ## 一句話總結
 這不是單純的學習平台功能，而是一套把學習行為轉成可監管、可審核、可追溯數位證據的合規風險控管系統。
