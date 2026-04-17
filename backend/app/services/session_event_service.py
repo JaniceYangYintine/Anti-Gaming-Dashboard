@@ -122,6 +122,20 @@ class SessionEventService:
                     "quiz_score": payload.metadata_json.get("quiz_score"),
                 },
             )
+        elif payload.event_type == "page_dwell_summary":
+            db.execute(
+                text(
+                    """
+                    UPDATE learning_sessions
+                    SET context_switch_count = context_switch_count + COALESCE(:hidden_count, 0)
+                    WHERE session_id = :session_id
+                    """
+                ),
+                {
+                    "session_id": payload.session_id,
+                    "hidden_count": payload.metadata_json.get("hidden_count", 0),
+                },
+            )
         elif payload.event_type == "session_completed":
             db.execute(
                 text(
@@ -205,8 +219,137 @@ class SessionEventService:
             if not isinstance(quiz_score, int) or quiz_score < 0 or quiz_score > 100:
                 raise ValueError("quiz_score must be an integer between 0 and 100")
 
+        if payload.event_type == "answer_changed":
+            question_id = payload.metadata_json.get("question_id")
+            from_answer = payload.metadata_json.get("from_answer")
+            to_answer = payload.metadata_json.get("to_answer")
+            if question_id is None or from_answer is None or to_answer is None:
+                raise ValueError(
+                    "answer_changed requires question_id, from_answer and to_answer in metadata_json"
+                )
+            if not isinstance(question_id, str) or not question_id.strip():
+                raise ValueError("answer_changed question_id must be a non-empty string")
+            if not isinstance(from_answer, str) or not from_answer.strip():
+                raise ValueError("answer_changed from_answer must be a non-empty string")
+            if not isinstance(to_answer, str) or not to_answer.strip():
+                raise ValueError("answer_changed to_answer must be a non-empty string")
+            if from_answer == to_answer:
+                raise ValueError("answer_changed from_answer and to_answer cannot be identical")
+
         if payload.event_type == "session_completed":
             if session_row["finished_at"] is not None:
                 raise ValueError("Session has already been completed")
             if parsed_timestamp <= session_row["started_at"]:
                 raise ValueError("session_completed timestamp must be later than session start time")
+
+        if payload.event_type == "mouse_activity":
+            move_count = payload.metadata_json.get("move_count")
+            click_count = payload.metadata_json.get("click_count")
+            scroll_count = payload.metadata_json.get("scroll_count")
+            active_milliseconds = payload.metadata_json.get("active_milliseconds")
+            if None in (move_count, click_count, scroll_count, active_milliseconds):
+                raise ValueError(
+                    "mouse_activity requires move_count, click_count, scroll_count and active_milliseconds in metadata_json"
+                )
+            for key, value in {
+                "move_count": move_count,
+                "click_count": click_count,
+                "scroll_count": scroll_count,
+                "active_milliseconds": active_milliseconds,
+            }.items():
+                if not isinstance(value, int) or value < 0:
+                    raise ValueError(f"mouse_activity {key} must be a non-negative integer")
+
+        if payload.event_type == "keyboard_activity":
+            keydown_count = payload.metadata_json.get("keydown_count")
+            shortcut_count = payload.metadata_json.get("shortcut_count", 0)
+            active_milliseconds = payload.metadata_json.get("active_milliseconds")
+            if keydown_count is None or active_milliseconds is None:
+                raise ValueError(
+                    "keyboard_activity requires keydown_count and active_milliseconds in metadata_json"
+                )
+            for key, value in {
+                "keydown_count": keydown_count,
+                "shortcut_count": shortcut_count,
+                "active_milliseconds": active_milliseconds,
+            }.items():
+                if not isinstance(value, int) or value < 0:
+                    raise ValueError(f"keyboard_activity {key} must be a non-negative integer")
+
+        if payload.event_type == "page_visibility":
+            visibility_state = payload.metadata_json.get("visibility_state")
+            source = payload.metadata_json.get("source")
+            if visibility_state is None or source is None:
+                raise ValueError("page_visibility requires visibility_state and source in metadata_json")
+            if visibility_state not in {"visible", "hidden"}:
+                raise ValueError("page_visibility visibility_state must be visible or hidden")
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError("page_visibility source must be a non-empty string")
+
+        if payload.event_type == "page_dwell_summary":
+            focused_seconds = payload.metadata_json.get("focused_seconds")
+            hidden_seconds = payload.metadata_json.get("hidden_seconds")
+            hidden_count = payload.metadata_json.get("hidden_count")
+            if None in (focused_seconds, hidden_seconds, hidden_count):
+                raise ValueError(
+                    "page_dwell_summary requires focused_seconds, hidden_seconds and hidden_count in metadata_json"
+                )
+            for key, value in {
+                "focused_seconds": focused_seconds,
+                "hidden_seconds": hidden_seconds,
+                "hidden_count": hidden_count,
+            }.items():
+                if not isinstance(value, int) or value < 0:
+                    raise ValueError(f"page_dwell_summary {key} must be a non-negative integer")
+
+        if payload.event_type in {"face_presence", "face_absence", "multiple_faces_detected"}:
+            source = payload.metadata_json.get("source")
+            detector_name = payload.metadata_json.get("detector_name")
+            faces_detected = payload.metadata_json.get("faces_detected")
+            if source is None or detector_name is None or faces_detected is None:
+                raise ValueError(
+                    f"{payload.event_type} requires source, detector_name and faces_detected in metadata_json"
+                )
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError(f"{payload.event_type} source must be a non-empty string")
+            if not isinstance(detector_name, str) or not detector_name.strip():
+                raise ValueError(f"{payload.event_type} detector_name must be a non-empty string")
+            if not isinstance(faces_detected, int) or faces_detected < 0:
+                raise ValueError(f"{payload.event_type} faces_detected must be a non-negative integer")
+
+        if payload.event_type == "face_presence":
+            absence_duration_seconds = payload.metadata_json.get("absence_duration_seconds")
+            if absence_duration_seconds is not None and (
+                not isinstance(absence_duration_seconds, int) or absence_duration_seconds < 0
+            ):
+                raise ValueError("face_presence absence_duration_seconds must be a non-negative integer")
+
+        if payload.event_type == "camera_monitor_summary":
+            required_values = {
+                "face_present_seconds": payload.metadata_json.get("face_present_seconds"),
+                "face_absent_seconds": payload.metadata_json.get("face_absent_seconds"),
+                "longest_face_absence_seconds": payload.metadata_json.get("longest_face_absence_seconds"),
+                "absence_count": payload.metadata_json.get("absence_count"),
+                "multiple_faces_seconds": payload.metadata_json.get("multiple_faces_seconds"),
+                "multiple_faces_detected_count": payload.metadata_json.get("multiple_faces_detected_count"),
+                "source": payload.metadata_json.get("source"),
+                "detector_name": payload.metadata_json.get("detector_name"),
+            }
+            for key, value in required_values.items():
+                if value is None:
+                    raise ValueError(f"camera_monitor_summary requires {key} in metadata_json")
+            for key in (
+                "face_present_seconds",
+                "face_absent_seconds",
+                "longest_face_absence_seconds",
+                "absence_count",
+                "multiple_faces_seconds",
+                "multiple_faces_detected_count",
+            ):
+                value = required_values[key]
+                if not isinstance(value, int) or value < 0:
+                    raise ValueError(f"camera_monitor_summary {key} must be a non-negative integer")
+            for key in ("source", "detector_name"):
+                value = required_values[key]
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(f"camera_monitor_summary {key} must be a non-empty string")

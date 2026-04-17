@@ -36,6 +36,7 @@
 ### Forensic Timeline
 - 重建單筆 session 的事件軌跡
 - 顯示開始、滑卡、答題、切頁、完成等操作順序
+- 支援滑鼠、鍵盤、頁面可見度與答案變更事件留痕
 
 ### Resolution Action Bar
 - 支援 `approved`、`voided`、`escalated_to_hr`
@@ -50,6 +51,14 @@
 - 前端支援一鍵模擬三種典型案例
 - 可快速展示規則判斷與畫面刷新流程
 
+### Auto Evidence Collection
+- 建立 Session 後，前端會自動監聽 `mousemove`、`click`、`wheel`
+- 自動監聽 `keydown` 與頁面 `visibilitychange`
+- Session 完成前會自動送出滑鼠/鍵盤彙總與頁面停留摘要
+- 若學習題目元件帶有 `data-question-id`，會自動記錄 `answer_changed`
+- 可選擇啟用鏡頭 presence monitor，在瀏覽器本地分析是否有人臉、離開畫面時長與多人出現
+- 不錄影、不上傳影像，只寫入狀態事件與摘要指標
+
 ## 技術架構
 - 前端：`HTML + CSS + JavaScript`
 - 後端：`Python FastAPI`
@@ -62,6 +71,16 @@
   短時間完成測驗且得分為指定低分
 - `EXCESSIVE_CONTEXT_SWITCH`
   學習期間切換頁籤或 App 次數過高
+- `REPEATED_ANSWER_CHANGES`
+  同一題多次改答或整體改答次數異常偏高
+- `LOW_INPUT_ACTIVITY`
+  滑鼠與鍵盤互動過低，疑似掛機或非本人操作
+- `LOW_PAGE_FOCUS_RATIO`
+  頁面有效停留比例不足或切離頁面次數過多
+- `LONG_FACE_ABSENCE`
+  鏡頭偵測到長時間未出現在畫面中
+- `MULTIPLE_FACES_PRESENT`
+  鏡頭偵測到同時有多張臉出現在畫面中
 
 ## 資料模型
 - `compliance_rules`
@@ -212,14 +231,55 @@ sequenceDiagram
 - `schema.sql` 已可匯入 PostgreSQL
 - seed data 已可建立固定 demo 案例
 - FastAPI `/health` 已可回傳 `status: ok`、`database: ok`
-- `flags` API 已可回傳 demo 資料s
+- `flags` API 已可回傳 demo 資料
 - 已完成一輪端到端 API 驗證：
   - 建立 session
   - 寫入 events
   - 觸發 flag
   - 完成 resolution
   - 寫入 audit log
+- 前端已可自動蒐集滑鼠、鍵盤、頁面可見度與停留時間證據
+- 前端已支援以 `data-question-id` 自動追蹤答案變更
 
+## 前端自動蒐證接法
+若要把自動蒐證接到真正的學習頁面，建議在題目欄位加入 `data-question-id`：
+
+```html
+<input type="radio" name="q1" value="A" data-question-id="Q1" />
+<input type="radio" name="q1" value="B" data-question-id="Q1" />
+<select data-question-id="Q2">
+  <option value="yes">Yes</option>
+  <option value="no">No</option>
+</select>
+<textarea data-question-id="Q3"></textarea>
+```
+
+這樣在同一個 Session 內，使用者改答時就會自動送出 `answer_changed` 事件。
+
+若瀏覽器支援 `FaceDetector API`，也可以在 dashboard 的 `鏡頭 Presence Monitor` 卡片中手動啟用鏡頭監測。系統會在前端本地分析：
+- 是否有人臉
+- 離開畫面多久
+- 是否偵測到多人
+
+並將結果寫成：
+- `face_presence`
+- `face_absence`
+- `multiple_faces_detected`
+- `camera_monitor_summary`
+
+## 本機啟動
+請參考：
+- [LOCAL_RUNBOOK.md](/Users/yintinemacbookair/Desktop/Anti-Gaming/LOCAL_RUNBOOK.md)
+
+## 展示腳本
+請參考：
+- [DEMO_DAY_SCRIPT.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/DEMO_DAY_SCRIPT.md)
+
+## 其他交付文件
+- [todo.md](/Users/yintinemacbookair/Desktop/Anti-Gaming/todo.md)
+- [DEVELOPMENT_SUMMARY.md](/Users/yintinemacbookair/Desktop/Anti-Gaming/DEVELOPMENT_SUMMARY.md)
+- [DEVELOPMENT_ISSUES.md](/Users/yintinemacbookair/Desktop/Anti-Gaming/DEVELOPMENT_ISSUES.md)
+- [MANUAL_TEST_CHECKLIST.md](/Users/yintinemacbookair/Desktop/Anti-Gaming/MANUAL_TEST_CHECKLIST.md)
 
 ## 一句話總結
 這不是單純的學習平台功能，而是一套把學習行為轉成可監管、可審核、可追溯數位證據的合規風險控管系統。

@@ -6,9 +6,18 @@ from pydantic import BaseModel, Field
 EventType = Literal[
     "session_started",
     "card_swiped",
+    "answer_changed",
     "quiz_started",
     "quiz_submitted",
     "context_switch",
+    "mouse_activity",
+    "keyboard_activity",
+    "page_visibility",
+    "page_dwell_summary",
+    "face_presence",
+    "face_absence",
+    "multiple_faces_detected",
+    "camera_monitor_summary",
     "session_completed",
 ]
 

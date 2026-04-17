@@ -170,4 +170,39 @@ VALUES
     '7 分鐘學習期間切換頁籤或 App 超過 5 次',
     '{"max_context_switches": 5, "window_minutes": 7}'::jsonb,
     'high'
+  ),
+  (
+    'REPEATED_ANSWER_CHANGES',
+    '反覆修改答案',
+    '同一題多次改答或整體改答次數異常偏高',
+    '{"max_changes_per_question": 3, "min_total_changes": 5}'::jsonb,
+    'medium'
+  ),
+  (
+    'LOW_INPUT_ACTIVITY',
+    '低滑鼠鍵盤互動',
+    '課程期間滑鼠與鍵盤活躍比例過低，疑似掛機或非本人操作',
+    '{"min_active_ratio": 0.08, "max_input_events": 15}'::jsonb,
+    'medium'
+  ),
+  (
+    'LOW_PAGE_FOCUS_RATIO',
+    '頁面有效停留不足',
+    '頁面停留焦點比例偏低或過度切離頁面',
+    '{"min_focus_ratio": 0.6, "max_hidden_count": 3}'::jsonb,
+    'high'
+  ),
+  (
+    'LONG_FACE_ABSENCE',
+    '長時間離開畫面',
+    '鏡頭偵測到學員長時間未出現在畫面中',
+    '{"max_face_absent_seconds": 60, "max_longest_face_absence_seconds": 20}'::jsonb,
+    'high'
+  ),
+  (
+    'MULTIPLE_FACES_PRESENT',
+    '多人出現在畫面中',
+    '鏡頭偵測到同時有超過一張臉出現在畫面中',
+    '{"max_multiple_faces_seconds": 10, "max_multiple_faces_detected_count": 0}'::jsonb,
+    'high'
   );

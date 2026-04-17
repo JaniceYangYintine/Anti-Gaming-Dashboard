@@ -262,6 +262,70 @@ body {
   margin-bottom: 18px;
 }
 
+.camera-card {
+  display: grid;
+  gap: 14px;
+}
+
+.quiz-demo-card {
+  display: grid;
+  gap: 14px;
+}
+
+.quiz-demo-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.quiz-question {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.quiz-question legend {
+  padding: 0 6px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.choice-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.choice-option input {
+  width: auto;
+}
+
+.camera-preview-shell {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: rgba(28, 24, 20, 0.08);
+  min-height: 220px;
+}
+
+.camera-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  background: linear-gradient(135deg, rgba(17, 17, 17, 0.85), rgba(49, 68, 61, 0.72));
+}
+
+.camera-actions,
+.camera-status-list {
+  display: grid;
+  gap: 10px;
+}
+
 .scenario-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

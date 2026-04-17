@@ -4,8 +4,8 @@
 `[████████████████████] 99%`
 
 進度說明：
-- 已完成：規格整理、資料庫 schema、backend 骨架、核心 API、session lifecycle、rule evaluation、前端第一版、前端測試流程
-- 進行中：demo 排演與交件收尾
+- 已完成：規格整理、資料庫 schema、backend 骨架、核心 API、session lifecycle、rule evaluation、前端第一版、自動蒐證骨架
+- 進行中：真實學習頁面接點整合、demo 排演與交件收尾
 - 尚未完成：完整驗證、更多邊界條件測試、使用體驗優化
 
 ## 專案定位
@@ -88,6 +88,8 @@
 7. 主管可透過 resolution API 寫入審核結果與 audit log
 8. `session-events` 已開始驗證 timestamp 與 quiz metadata 合法性
 9. `resolution` 已開始驗證 manager 存在與核准說明合理性
+10. `session-events` 已支援答案變更、滑鼠活動、鍵盤活動、頁面可見度、頁面停留摘要
+11. 規則引擎已能根據互動證據做更細緻的風險判斷
 
 關鍵檔案：
 - [backend/app/services/session_service.py](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/backend/app/services/session_service.py)
@@ -111,6 +113,13 @@
 - Session 建立表單
 - Session Event 送出表單
 - 可從前端模擬 `session_started`、`quiz_submitted`、`context_switch`、`session_completed`
+- 建立 Session 後自動監聽 `mousemove`、`click`、`wheel`
+- 建立 Session 後自動監聽 `keydown`
+- 建立 Session 後自動監聽 `visibilitychange`
+- Session 完成前自動送出 `mouse_activity`、`keyboard_activity`、`page_dwell_summary`
+- 若學習欄位帶有 `data-question-id`，會自動送出 `answer_changed`
+- 已新增可手動啟用的鏡頭 presence monitor
+- 若瀏覽器支援 `FaceDetector API`，可在前端本地分析是否有人臉、離開畫面與多人出現
 
 ### 8. 開發環境檔案已補齊
 - [docker-compose.yml](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/docker-compose.yml)
@@ -174,12 +183,37 @@
 - 已新增 [DEMO_DAY_SCRIPT.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/DEMO_DAY_SCRIPT.md) 作為 4/20 當天展示腳本
 - 已新增 [PPT_5PAGE_SCRIPT.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/PPT_5PAGE_SCRIPT.md) 作為簡報文字稿
 - 已整理 [README.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/README.md) 最終交件版
+- backend 已新增事件型別：
+  - `answer_changed`
+  - `mouse_activity`
+  - `keyboard_activity`
+  - `page_visibility`
+  - `page_dwell_summary`
+- backend 已新增規則：
+  - `REPEATED_ANSWER_CHANGES`
+  - `LOW_INPUT_ACTIVITY`
+  - `LOW_PAGE_FOCUS_RATIO`
+- 前端已加入自動蒐證機制，建立 Session 後會定期彙總並送出滑鼠與鍵盤活動
+- 前端切換頁面可見度時，會即時送出 `page_visibility`
+- 前端在 Session 完成前，會先補送 `page_dwell_summary`
+- 前端已加入以 `data-question-id` 為基礎的答案變更自動追蹤，避免把管理面板表單誤判成學習行為
+- 前端已新增鏡頭 presence monitor UI，啟用後可在本地蒐集人臉存在、離開畫面與多人出現摘要
+- backend 已新增鏡頭相關事件：
+  - `face_presence`
+  - `face_absence`
+  - `multiple_faces_detected`
+  - `camera_monitor_summary`
+- backend 已新增鏡頭相關規則：
+  - `LONG_FACE_ABSENCE`
+  - `MULTIPLE_FACES_PRESENT`
 
 ## 目前還沒完成的重點
 - session event 的更完整驗證
 - resolution 的完整端到端實機驗證
 - 規則引擎的更多邊界條件測試
 - 前端與真實後端的完整串接驗證
+- 真實學習頁面中 `data-question-id` 與題目元件的完整接線
+- 實機驗證鏡頭 presence monitor 在目標瀏覽器上是否支援 `FaceDetector API`
 - 更完整的 mock / seed data 流程
 - 前端送出 event 後的使用體驗優化
 - 更完整的錯誤訊息與提示設計
@@ -203,6 +237,6 @@
 
 ## 下一步建議
 下一步建議優先做：
-1. resolution / session-events 的端到端驗證
-2. 前端改成更清楚顯示自動產生的 flags 與事件送出結果
+1. 讓真實學習頁面題目元件補上 `data-question-id`，接通答案變更蒐證
+2. 實機驗證自動蒐證事件是否正確寫入 timeline 與觸發新規則
 3. 補更多 session event 驗證與錯誤處理

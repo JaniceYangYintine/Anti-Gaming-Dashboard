@@ -142,8 +142,77 @@
             </form>
           </section>
 
+          <section class="card camera-card">
+            <h3>2. 鏡頭 Presence Monitor</h3>
+            <p class="muted">
+              只在瀏覽器本地做臉部存在偵測，不錄影、不上傳畫面，只送出是否有人臉、離開畫面時長與多人出現摘要。
+            </p>
+            <div class="camera-preview-shell">
+              <video id="camera-preview" class="camera-preview" autoplay playsinline muted></video>
+            </div>
+            <div class="camera-actions">
+              <button id="camera-start-button" type="button" class="primary-button">啟用鏡頭監測</button>
+              <button id="camera-stop-button" type="button" class="ghost-button">停止鏡頭監測</button>
+            </div>
+            <div class="camera-status-list">
+              <div class="readiness-item">
+                <strong>鏡頭功能</strong>
+                <span id="camera-support-status" class="status-pill status-warn">檢查中</span>
+              </div>
+              <div class="readiness-item">
+                <strong>目前狀態</strong>
+                <span id="camera-monitor-status" class="status-pill status-warn">未啟用</span>
+              </div>
+            </div>
+            <p id="camera-status-message" class="muted">建立 Session 後若已啟用鏡頭監測，系統會自動把鏡頭 presence 資訊寫入事件流。</p>
+          </section>
+
+          <section class="card quiz-demo-card">
+            <h3>2.5 Demo Quiz</h3>
+            <p class="muted">
+              建立 Session 後，先選一次答案建立基準，再改成其他選項，就能在 Timeline 看到 `answer_changed`。
+            </p>
+            <div class="quiz-demo-grid">
+              <fieldset class="quiz-question">
+                <legend>Q1. AML 可疑交易發現後，應先做什麼？</legend>
+                <label class="choice-option">
+                  <input type="radio" name="demo-q1" value="report_immediately" data-question-id="DEMO-Q1" />
+                  <span>立即依程序通報</span>
+                </label>
+                <label class="choice-option">
+                  <input type="radio" name="demo-q1" value="wait_next_day" data-question-id="DEMO-Q1" />
+                  <span>隔天再處理</span>
+                </label>
+                <label class="choice-option">
+                  <input type="radio" name="demo-q1" value="ignore_once" data-question-id="DEMO-Q1" />
+                  <span>先忽略一次</span>
+                </label>
+              </fieldset>
+
+              <label class="quiz-question">
+                <span>Q2. 你對鏡頭 presence 監測的判斷是？</span>
+                <select data-question-id="DEMO-Q2">
+                  <option value="">請選擇</option>
+                  <option value="support">可作為輔助訊號</option>
+                  <option value="core">可作為唯一判定依據</option>
+                  <option value="disabled">完全不需要</option>
+                </select>
+              </label>
+
+              <label class="quiz-question">
+                <span>Q3. 補充說明</span>
+                <textarea
+                  rows="3"
+                  data-question-id="DEMO-Q3"
+                  placeholder="先輸入一段，再修改一次，就會觸發 answer_changed。"
+                ></textarea>
+              </label>
+            </div>
+            <p id="quiz-demo-status" class="muted">尚未建立 Session。建立後操作題目即可在畫面上看到答案變更事件提示。</p>
+          </section>
+
           <section class="card">
-            <h3>2. 送出 Session Event</h3>
+            <h3>3. 送出 Session Event</h3>
             <div class="current-session">
               <span class="muted">目前 Session ID</span>
               <strong id="current-session-id">尚未建立</strong>
@@ -155,7 +224,16 @@
                   <select id="event-type">
                     <option value="session_started">session_started</option>
                     <option value="card_swiped">card_swiped</option>
+                    <option value="answer_changed">answer_changed</option>
                     <option value="context_switch">context_switch</option>
+                    <option value="mouse_activity">mouse_activity</option>
+                    <option value="keyboard_activity">keyboard_activity</option>
+                    <option value="page_visibility">page_visibility</option>
+                    <option value="page_dwell_summary">page_dwell_summary</option>
+                    <option value="face_presence">face_presence</option>
+                    <option value="face_absence">face_absence</option>
+                    <option value="multiple_faces_detected">multiple_faces_detected</option>
+                    <option value="camera_monitor_summary">camera_monitor_summary</option>
                     <option value="quiz_submitted">quiz_submitted</option>
                     <option value="session_completed">session_completed</option>
                   </select>

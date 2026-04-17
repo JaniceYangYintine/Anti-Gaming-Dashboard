@@ -228,3 +228,83 @@
 ### 解法
 - 將前端 readiness 判斷改成以 `data.database === "ok"` 為準
 - 順手新增 `已建立案例` 快速切換區，讓 demo 時更容易驗證畫面狀態是否同步
+
+## 18. 想加入更細的反作弊訊號時，原本事件模型不夠用
+### 問題
+原本 `session_events` 只涵蓋 `card_swiped`、`quiz_submitted`、`context_switch` 等較粗粒度事件，無法表達「反覆改答」、「滑鼠鍵盤互動密度」與「頁面有效停留時間」。
+
+### 影響
+- 即使已能判斷快速完課與切頁，仍難以辨識掛機、非本人操作或答題猶豫異常
+- Timeline 證據粒度不足，不利於主管事後判讀
+
+### 解法
+- 擴充 `session_events` 可接受的事件型別
+- 新增：
+  - `answer_changed`
+  - `mouse_activity`
+  - `keyboard_activity`
+  - `page_visibility`
+  - `page_dwell_summary`
+- 在 rule engine 中新增對應規則：
+  - `REPEATED_ANSWER_CHANGES`
+  - `LOW_INPUT_ACTIVITY`
+  - `LOW_PAGE_FOCUS_RATIO`
+
+## 19. 若直接監聽整個 dashboard，容易把管理面板操作誤記成作弊證據
+### 問題
+這個 repo 目前前端是風險管理 dashboard，不是實際學習頁面。若直接把所有 `input`、`select`、`textarea` 的變更都記成 `answer_changed`，會把建立 Session、主管審核、篩選器操作也一起寫進證據流。
+
+### 影響
+- 事件資料被污染
+- `answer_changed` 規則容易出現誤判
+- Timeline 會混入與學習行為無關的操作
+
+### 解法
+- 自動答案追蹤只針對帶有 `data-question-id` 的欄位生效
+- 明確排除 `#session-form`、`#event-form`、`#resolution-form`
+- 將這個接法寫進 README，讓後續真正接學習頁面時有穩定規則
+
+## 20. 自動蒐證若與 demo scenario 同時運作，會汙染示範資料
+### 問題
+前端已經有一鍵 scenario 模擬；若自動監聽在 scenario 期間仍持續送出 `mouse_activity`、`keyboard_activity`、`page_visibility`，demo 資料會混入人工操作噪音。
+
+### 影響
+- Scenario 產生的資料不再固定
+- 規則命中結果可能因現場操作而改變
+- 不利於簡報與排演重現
+
+### 解法
+- 執行 scenario 前先暫停自動 telemetry
+- scenario 完成後再恢復一般狀態
+- 讓 demo 仍維持固定案例，真實互動則只在手動建立 Session 時啟動
+
+## 21. 鏡頭偵測若直接上傳影像，隱私風險太高
+### 問題
+鏡頭相關訊號很有展示價值，但若直接錄影、截圖或把影像送到後端分析，會讓隱私、資安與合規風險瞬間升高。
+
+### 影響
+- 使用者接受度大幅下降
+- 在金融/保險訓練情境下，更容易被質疑蒐集過度
+- 專案會從「行為證據留痕」變成「影像監控」，審查門檻完全不同
+
+### 解法
+- 鏡頭只在前端本地分析
+- 不錄影、不截圖、不上傳影像
+- 後端只接收摘要事件：
+  - `face_presence`
+  - `face_absence`
+  - `multiple_faces_detected`
+  - `camera_monitor_summary`
+
+## 22. 鏡頭偵測的最大風險不是程式碼，而是瀏覽器支援度
+### 問題
+目前這版採用瀏覽器內建 `FaceDetector API`，不額外引入第三方模型。這樣雖然輕量，但不是每個瀏覽器都支援。
+
+### 影響
+- 在不支援的瀏覽器上，鏡頭 presence monitor 無法啟用
+- 功能可展示，但不保證所有環境都能直接跑起來
+
+### 解法
+- 前端先檢查 `getUserMedia + FaceDetector` 是否可用
+- 若不支援，就顯示明確狀態，不強行啟用
+- 將鏡頭功能設計為可選配的輔助訊號，而不是唯一判定依據

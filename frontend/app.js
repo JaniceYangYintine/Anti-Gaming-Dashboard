@@ -1,4 +1,63 @@
 const API_BASE = "http://localhost:8000/api/v1";
+const TELEMETRY_FLUSH_INTERVAL_MS = 15000;
+const ACTIVE_INPUT_GAP_MS = 5000;
+const CAMERA_DETECTION_INTERVAL_MS = 3000;
+
+function createCameraMonitorState() {
+  return {
+    supported: false,
+    detectorName: "unsupported",
+    enabled: false,
+    stream: null,
+    detector: null,
+    intervalId: null,
+    detecting: false,
+    status: "idle",
+    lastObservedAt: null,
+    currentAbsenceStartedAt: null,
+    summary: {
+      facePresentMilliseconds: 0,
+      faceAbsentMilliseconds: 0,
+      multipleFacesMilliseconds: 0,
+      longestFaceAbsenceMilliseconds: 0,
+      absenceCount: 0,
+      multipleFacesDetectedCount: 0,
+    },
+  };
+}
+
+function createTelemetryState() {
+  return {
+    enabled: false,
+    listenersBound: false,
+    sessionId: null,
+    intervalId: null,
+    flushing: false,
+    page: {
+      focusedMilliseconds: 0,
+      hiddenMilliseconds: 0,
+      hiddenCount: 0,
+      focusStartedAt: null,
+      hiddenStartedAt: null,
+    },
+    mouse: {
+      moveCount: 0,
+      clickCount: 0,
+      scrollCount: 0,
+      activeMilliseconds: 0,
+      lastEventAt: null,
+    },
+    keyboard: {
+      keydownCount: 0,
+      shortcutCount: 0,
+      activeMilliseconds: 0,
+      lastEventAt: null,
+    },
+    answers: {
+      valuesByQuestion: {},
+    },
+  };
+}
 
 const state = {
   selectedFlagId: null,
@@ -8,6 +67,9 @@ const state = {
     backend: false,
     database: false,
   },
+  telemetry: createTelemetryState(),
+  cameraMonitor: createCameraMonitorState(),
+  scenarioRunning: false,
 };
 
 const elements = {
@@ -48,6 +110,13 @@ const elements = {
   resolutionAction: document.querySelector("#resolution-action"),
   resolutionNote: document.querySelector("#resolution-note"),
   resolutionStatus: document.querySelector("#resolution-status"),
+  cameraPreview: document.querySelector("#camera-preview"),
+  cameraStartButton: document.querySelector("#camera-start-button"),
+  cameraStopButton: document.querySelector("#camera-stop-button"),
+  cameraSupportStatus: document.querySelector("#camera-support-status"),
+  cameraMonitorStatus: document.querySelector("#camera-monitor-status"),
+  cameraStatusMessage: document.querySelector("#camera-status-message"),
+  quizDemoStatus: document.querySelector("#quiz-demo-status"),
 };
 
 const scenarioDefinitions = {
@@ -126,6 +195,555 @@ function setDefaultDatetimeInputs() {
   elements.eventTimestamp.value = local;
 }
 
+function resetTelemetryBuckets() {
+  state.telemetry.mouse = {
+    moveCount: 0,
+    clickCount: 0,
+    scrollCount: 0,
+    activeMilliseconds: 0,
+    lastEventAt: null,
+  };
+  state.telemetry.keyboard = {
+    keydownCount: 0,
+    shortcutCount: 0,
+    activeMilliseconds: 0,
+    lastEventAt: null,
+  };
+  state.telemetry.answers = {
+    valuesByQuestion: {},
+  };
+}
+
+function bindTelemetryListeners() {
+  if (state.telemetry.listenersBound) {
+    return;
+  }
+
+  document.addEventListener("mousemove", () => {
+    recordMouseActivity("moveCount");
+  });
+  document.addEventListener("click", () => {
+    recordMouseActivity("clickCount");
+  });
+  document.addEventListener(
+    "wheel",
+    () => {
+      recordMouseActivity("scrollCount");
+    },
+    { passive: true }
+  );
+  document.addEventListener("keydown", (event) => {
+    recordKeyboardActivity(event);
+  });
+  document.addEventListener("change", (event) => {
+    recordAnswerChange(event).catch(console.error);
+  });
+  document.addEventListener("visibilitychange", () => {
+    handleVisibilityChange().catch(console.error);
+  });
+  window.addEventListener("beforeunload", () => {
+    if (state.telemetry.enabled) {
+      finalizePageVisibilityWindow();
+    }
+  });
+
+  state.telemetry.listenersBound = true;
+}
+
+function isTelemetryEnabled() {
+  return state.telemetry.enabled && !state.scenarioRunning && !!state.currentSessionId;
+}
+
+function initializePageTracking() {
+  const now = Date.now();
+  state.telemetry.page.focusedMilliseconds = 0;
+  state.telemetry.page.hiddenMilliseconds = 0;
+  state.telemetry.page.hiddenCount = 0;
+  state.telemetry.page.focusStartedAt = document.visibilityState === "visible" ? now : null;
+  state.telemetry.page.hiddenStartedAt = document.visibilityState === "hidden" ? now : null;
+}
+
+function startAutoTelemetry(sessionId) {
+  bindTelemetryListeners();
+  stopAutoTelemetry();
+
+  state.telemetry.enabled = true;
+  state.telemetry.sessionId = sessionId;
+  resetTelemetryBuckets();
+  initializePageTracking();
+  initializeTrackedAnswerState();
+  state.telemetry.intervalId = window.setInterval(() => {
+    flushTelemetryActivity().catch(console.error);
+  }, TELEMETRY_FLUSH_INTERVAL_MS);
+}
+
+function stopAutoTelemetry() {
+  if (state.telemetry.intervalId) {
+    window.clearInterval(state.telemetry.intervalId);
+  }
+  state.telemetry = {
+    ...createTelemetryState(),
+    listenersBound: true,
+  };
+}
+
+function recordMouseActivity(counterKey) {
+  if (!isTelemetryEnabled()) {
+    return;
+  }
+
+  const now = Date.now();
+  const bucket = state.telemetry.mouse;
+  if (bucket.lastEventAt !== null) {
+    bucket.activeMilliseconds += Math.min(now - bucket.lastEventAt, ACTIVE_INPUT_GAP_MS);
+  }
+  bucket.lastEventAt = now;
+  bucket[counterKey] += 1;
+}
+
+function recordKeyboardActivity(event) {
+  if (!isTelemetryEnabled()) {
+    return;
+  }
+
+  const now = Date.now();
+  const bucket = state.telemetry.keyboard;
+  if (bucket.lastEventAt !== null) {
+    bucket.activeMilliseconds += Math.min(now - bucket.lastEventAt, ACTIVE_INPUT_GAP_MS);
+  }
+  bucket.lastEventAt = now;
+  bucket.keydownCount += 1;
+  if (event.metaKey || event.ctrlKey || event.altKey) {
+    bucket.shortcutCount += 1;
+  }
+}
+
+function getTrackableAnswerTarget(target) {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  const candidate = target.closest("[data-question-id]");
+  if (!candidate) {
+    return null;
+  }
+
+  if (candidate.closest("#session-form, #event-form, #resolution-form")) {
+    return null;
+  }
+
+  if (
+    candidate instanceof HTMLInputElement ||
+    candidate instanceof HTMLSelectElement ||
+    candidate instanceof HTMLTextAreaElement
+  ) {
+    return candidate;
+  }
+
+  const nestedField = candidate.querySelector("input, select, textarea");
+  return nestedField || null;
+}
+
+function readAnswerValue(field, questionId) {
+  if (field instanceof HTMLInputElement) {
+    if (field.type === "radio") {
+      const selectorName = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(field.name) : field.name;
+      const checked = document.querySelector(
+        `input[type="radio"][name="${selectorName}"][data-question-id="${questionId}"]:checked`
+      );
+      return checked ? checked.value : "";
+    }
+
+    if (field.type === "checkbox") {
+      const selectorName = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(field.name) : field.name;
+      if (field.name) {
+        const checkedValues = Array.from(
+          document.querySelectorAll(
+            `input[type="checkbox"][name="${selectorName}"][data-question-id="${questionId}"]:checked`
+          )
+        )
+          .map((node) => node.value)
+          .sort();
+        return checkedValues.join("|");
+      }
+      return field.checked ? field.value || "checked" : "";
+    }
+
+    return field.value;
+  }
+
+  if (field instanceof HTMLSelectElement) {
+    if (field.multiple) {
+      return Array.from(field.selectedOptions)
+        .map((option) => option.value)
+        .sort()
+        .join("|");
+    }
+    return field.value;
+  }
+
+  if (field instanceof HTMLTextAreaElement) {
+    return field.value;
+  }
+
+  return "";
+}
+
+async function recordAnswerChange(event) {
+  if (!isTelemetryEnabled()) {
+    return;
+  }
+
+  const field = getTrackableAnswerTarget(event.target);
+  if (!field) {
+    return;
+  }
+
+  const questionId = field.dataset.questionId || field.closest("[data-question-id]")?.dataset.questionId;
+  if (!questionId) {
+    return;
+  }
+
+  const nextValue = readAnswerValue(field, questionId);
+  const previousValue = state.telemetry.answers.valuesByQuestion[questionId];
+
+  if (previousValue === undefined) {
+    state.telemetry.answers.valuesByQuestion[questionId] = nextValue;
+    return;
+  }
+
+  if (previousValue === nextValue) {
+    return;
+  }
+
+  state.telemetry.answers.valuesByQuestion[questionId] = nextValue;
+  await submitAutoEvent("answer_changed", {
+    question_id: questionId,
+    from_answer: previousValue || "(empty)",
+    to_answer: nextValue || "(empty)",
+  });
+  setQuizDemoStatus(
+    `已送出 answer_changed：${questionId} 由「${previousValue || "(empty)"}」改成「${nextValue || "(empty)"}」`,
+    "is-success"
+  );
+}
+
+function finalizePageVisibilityWindow() {
+  const now = Date.now();
+  if (state.telemetry.page.focusStartedAt !== null) {
+    state.telemetry.page.focusedMilliseconds += now - state.telemetry.page.focusStartedAt;
+    state.telemetry.page.focusStartedAt = now;
+  }
+  if (state.telemetry.page.hiddenStartedAt !== null) {
+    state.telemetry.page.hiddenMilliseconds += now - state.telemetry.page.hiddenStartedAt;
+    state.telemetry.page.hiddenStartedAt = now;
+  }
+}
+
+function buildPageDwellSummary() {
+  finalizePageVisibilityWindow();
+  return {
+    focused_seconds: Math.round(state.telemetry.page.focusedMilliseconds / 1000),
+    hidden_seconds: Math.round(state.telemetry.page.hiddenMilliseconds / 1000),
+    hidden_count: state.telemetry.page.hiddenCount,
+  };
+}
+
+function setQuizDemoStatus(message, variant = "muted") {
+  elements.quizDemoStatus.classList.remove("is-info", "is-success", "is-error", "muted");
+  elements.quizDemoStatus.classList.add(variant);
+  elements.quizDemoStatus.textContent = message;
+}
+
+function initializeTrackedAnswerState() {
+  const trackedFields = document.querySelectorAll("[data-question-id]");
+  trackedFields.forEach((field) => {
+    if (!(field instanceof HTMLElement)) {
+      return;
+    }
+    if (field.closest("#session-form, #event-form, #resolution-form")) {
+      return;
+    }
+    const resolvedField = getTrackableAnswerTarget(field);
+    if (!resolvedField) {
+      return;
+    }
+    const questionId =
+      resolvedField.dataset.questionId || resolvedField.closest("[data-question-id]")?.dataset.questionId;
+    if (!questionId) {
+      return;
+    }
+    state.telemetry.answers.valuesByQuestion[questionId] = readAnswerValue(resolvedField, questionId);
+  });
+}
+
+function detectCameraSupport() {
+  const hasMediaDevices =
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getUserMedia === "function";
+  const hasFaceDetector = typeof window !== "undefined" && "FaceDetector" in window;
+  state.cameraMonitor.supported = hasMediaDevices && hasFaceDetector;
+  state.cameraMonitor.detectorName = hasFaceDetector ? "FaceDetector" : "unsupported";
+  renderCameraSupportStatus();
+  renderCameraMonitorStatus(
+    state.cameraMonitor.supported ? "待啟用" : "不支援",
+    state.cameraMonitor.supported,
+    state.cameraMonitor.supported
+      ? "建立 Session 後若啟用鏡頭監測，系統會在本地分析人臉存在狀態。"
+      : "目前瀏覽器不支援本地 FaceDetector API，無法啟用鏡頭 presence 偵測。"
+  );
+}
+
+function resetCameraSummary() {
+  state.cameraMonitor.summary = {
+    facePresentMilliseconds: 0,
+    faceAbsentMilliseconds: 0,
+    multipleFacesMilliseconds: 0,
+    longestFaceAbsenceMilliseconds: 0,
+    absenceCount: 0,
+    multipleFacesDetectedCount: 0,
+  };
+}
+
+function updateCameraSummaryDurations(nextStatus, now) {
+  const previousStatus = state.cameraMonitor.status;
+  const previousObservedAt = state.cameraMonitor.lastObservedAt;
+  if (previousObservedAt !== null) {
+    const elapsed = Math.max(0, now - previousObservedAt);
+    if (previousStatus === "face_present") {
+      state.cameraMonitor.summary.facePresentMilliseconds += elapsed;
+    } else if (previousStatus === "face_absent") {
+      state.cameraMonitor.summary.faceAbsentMilliseconds += elapsed;
+    } else if (previousStatus === "multiple_faces") {
+      state.cameraMonitor.summary.multipleFacesMilliseconds += elapsed;
+      state.cameraMonitor.summary.facePresentMilliseconds += elapsed;
+    }
+  }
+  state.cameraMonitor.status = nextStatus;
+  state.cameraMonitor.lastObservedAt = now;
+}
+
+async function stopCameraMonitor() {
+  if (state.cameraMonitor.intervalId) {
+    window.clearInterval(state.cameraMonitor.intervalId);
+  }
+  if (state.cameraMonitor.stream) {
+    state.cameraMonitor.stream.getTracks().forEach((track) => track.stop());
+  }
+
+  state.cameraMonitor = {
+    ...createCameraMonitorState(),
+    supported: state.cameraMonitor.supported,
+    detectorName: state.cameraMonitor.detectorName,
+  };
+  elements.cameraPreview.srcObject = null;
+  renderCameraSupportStatus();
+  renderCameraMonitorStatus(
+    state.cameraMonitor.supported ? "已停止" : "不支援",
+    state.cameraMonitor.supported,
+    state.cameraMonitor.supported
+      ? "鏡頭監測已停止。重新啟用後才會繼續蒐集 presence 訊號。"
+      : "目前瀏覽器不支援本地 FaceDetector API，無法啟用鏡頭 presence 偵測。"
+  );
+}
+
+async function startCameraMonitor() {
+  if (!state.cameraMonitor.supported) {
+    renderCameraMonitorStatus("不支援", false, "目前瀏覽器不支援 FaceDetector，請改用支援的 Chromium 瀏覽器。");
+    return;
+  }
+
+  if (state.cameraMonitor.enabled) {
+    renderCameraMonitorStatus("已啟用", true, "鏡頭監測已在執行中。");
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 360 } },
+      audio: false,
+    });
+    const detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
+    elements.cameraPreview.srcObject = stream;
+    await elements.cameraPreview.play();
+
+    state.cameraMonitor.enabled = true;
+    state.cameraMonitor.stream = stream;
+    state.cameraMonitor.detector = detector;
+    state.cameraMonitor.status = "idle";
+    state.cameraMonitor.lastObservedAt = Date.now();
+    state.cameraMonitor.currentAbsenceStartedAt = null;
+    resetCameraSummary();
+    state.cameraMonitor.intervalId = window.setInterval(() => {
+      runCameraDetectionCycle().catch(console.error);
+    }, CAMERA_DETECTION_INTERVAL_MS);
+
+    renderCameraMonitorStatus(
+      state.currentSessionId ? "監測中" : "待 Session",
+      true,
+      state.currentSessionId
+        ? "鏡頭監測已啟用，會在本地記錄是否有人臉、離開畫面時長與多人出現。"
+        : "鏡頭已啟用。建立 Session 後才會把鏡頭 presence 訊號寫入事件流。"
+    );
+    await runCameraDetectionCycle();
+  } catch (error) {
+    renderCameraMonitorStatus(
+      "啟用失敗",
+      false,
+      `鏡頭啟用失敗：${error.message || "請確認瀏覽器權限與 HTTPS/localhost 環境。"}`
+    );
+  }
+}
+
+function buildCameraSummaryPayload() {
+  const now = Date.now();
+  updateCameraSummaryDurations(state.cameraMonitor.status, now);
+  if (state.cameraMonitor.currentAbsenceStartedAt !== null) {
+    state.cameraMonitor.summary.longestFaceAbsenceMilliseconds = Math.max(
+      state.cameraMonitor.summary.longestFaceAbsenceMilliseconds,
+      now - state.cameraMonitor.currentAbsenceStartedAt
+    );
+  }
+  return {
+    face_present_seconds: Math.round(state.cameraMonitor.summary.facePresentMilliseconds / 1000),
+    face_absent_seconds: Math.round(state.cameraMonitor.summary.faceAbsentMilliseconds / 1000),
+    longest_face_absence_seconds: Math.round(
+      state.cameraMonitor.summary.longestFaceAbsenceMilliseconds / 1000
+    ),
+    absence_count: state.cameraMonitor.summary.absenceCount,
+    multiple_faces_seconds: Math.round(state.cameraMonitor.summary.multipleFacesMilliseconds / 1000),
+    multiple_faces_detected_count: state.cameraMonitor.summary.multipleFacesDetectedCount,
+    detector_name: state.cameraMonitor.detectorName,
+    source: "frontend_camera_monitor",
+  };
+}
+
+async function flushCameraMonitorSummary() {
+  if (!state.cameraMonitor.enabled || !state.currentSessionId) {
+    return;
+  }
+
+  const payload = buildCameraSummaryPayload();
+  await submitAutoEvent("camera_monitor_summary", payload);
+  resetCameraSummary();
+  state.cameraMonitor.lastObservedAt = Date.now();
+}
+
+async function emitCameraStatusEvent(status, faceCount, now, absenceDurationSeconds = 0) {
+  if (!state.currentSessionId || !state.telemetry.enabled) {
+    return;
+  }
+
+  const basePayload = {
+    faces_detected: faceCount,
+    detector_name: state.cameraMonitor.detectorName,
+    source: "frontend_camera_monitor",
+  };
+
+  if (status === "face_presence") {
+    await submitAutoEvent("face_presence", {
+      ...basePayload,
+      absence_duration_seconds: Math.max(0, absenceDurationSeconds),
+    });
+    return;
+  }
+
+  if (status === "face_absence") {
+    await submitAutoEvent("face_absence", basePayload);
+    return;
+  }
+
+  if (status === "multiple_faces_detected") {
+    await submitAutoEvent("multiple_faces_detected", basePayload);
+  }
+}
+
+async function runCameraDetectionCycle() {
+  if (
+    !state.cameraMonitor.enabled ||
+    !state.cameraMonitor.detector ||
+    state.cameraMonitor.detecting ||
+    elements.cameraPreview.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+  ) {
+    return;
+  }
+
+  state.cameraMonitor.detecting = true;
+  try {
+    const faces = await state.cameraMonitor.detector.detect(elements.cameraPreview);
+    const faceCount = Array.isArray(faces) ? faces.length : 0;
+    const now = Date.now();
+    let nextStatus = "face_absent";
+    let eventToEmit = null;
+    let absenceDurationSeconds = 0;
+
+    if (faceCount > 1) {
+      nextStatus = "multiple_faces";
+      if (state.cameraMonitor.status !== "multiple_faces") {
+        state.cameraMonitor.summary.multipleFacesDetectedCount += 1;
+        eventToEmit = "multiple_faces_detected";
+        if (state.cameraMonitor.currentAbsenceStartedAt !== null) {
+          const absenceDuration = now - state.cameraMonitor.currentAbsenceStartedAt;
+          state.cameraMonitor.summary.longestFaceAbsenceMilliseconds = Math.max(
+            state.cameraMonitor.summary.longestFaceAbsenceMilliseconds,
+            absenceDuration
+          );
+          absenceDurationSeconds = Math.round(absenceDuration / 1000);
+          state.cameraMonitor.currentAbsenceStartedAt = null;
+        }
+      }
+    } else if (faceCount === 1) {
+      nextStatus = "face_present";
+      if (state.cameraMonitor.status !== "face_present") {
+        eventToEmit = "face_presence";
+        if (state.cameraMonitor.currentAbsenceStartedAt !== null) {
+          const absenceDuration = now - state.cameraMonitor.currentAbsenceStartedAt;
+          state.cameraMonitor.summary.longestFaceAbsenceMilliseconds = Math.max(
+            state.cameraMonitor.summary.longestFaceAbsenceMilliseconds,
+            absenceDuration
+          );
+          absenceDurationSeconds = Math.round(absenceDuration / 1000);
+          state.cameraMonitor.currentAbsenceStartedAt = null;
+        }
+      }
+    } else if (state.cameraMonitor.status !== "face_absent") {
+      nextStatus = "face_absent";
+      state.cameraMonitor.summary.absenceCount += 1;
+      state.cameraMonitor.currentAbsenceStartedAt = now;
+      eventToEmit = "face_absence";
+    }
+
+    updateCameraSummaryDurations(nextStatus, now);
+    if (eventToEmit) {
+      await emitCameraStatusEvent(eventToEmit, faceCount, now, absenceDurationSeconds);
+    }
+
+    if (!state.currentSessionId) {
+      renderCameraMonitorStatus(
+        "待 Session",
+        true,
+        faceCount > 0
+          ? `鏡頭已啟用，目前偵測到 ${faceCount} 張臉；建立 Session 後才會開始留痕。`
+          : "鏡頭已啟用，目前未偵測到人臉；建立 Session 後才會開始留痕。"
+      );
+      return;
+    }
+
+    if (faceCount > 1) {
+      renderCameraMonitorStatus("多人", false, `目前偵測到 ${faceCount} 張臉，系統會記錄多人同時出現在畫面中的風險訊號。`);
+    } else if (faceCount === 1) {
+      renderCameraMonitorStatus("單人", true, "目前偵測到單一人臉，鏡頭 presence 監測正常。");
+    } else {
+      renderCameraMonitorStatus("離開畫面", false, "目前未偵測到人臉，系統會累積離開畫面時長。");
+    }
+  } catch (error) {
+    renderCameraMonitorStatus("偵測失敗", false, `鏡頭偵測失敗：${error.message || "無法分析目前畫面。"}`);
+  } finally {
+    state.cameraMonitor.detecting = false;
+  }
+}
+
 function buildDefaultMetadata(eventType) {
   if (eventType === "quiz_submitted") {
     return {
@@ -142,6 +760,75 @@ function buildDefaultMetadata(eventType) {
   if (eventType === "card_swiped") {
     return {
       card_index: 1,
+    };
+  }
+  if (eventType === "answer_changed") {
+    return {
+      question_id: "Q1",
+      from_answer: "A",
+      to_answer: "C",
+    };
+  }
+  if (eventType === "mouse_activity") {
+    return {
+      move_count: 24,
+      click_count: 2,
+      scroll_count: 4,
+      active_milliseconds: 8000,
+    };
+  }
+  if (eventType === "keyboard_activity") {
+    return {
+      keydown_count: 12,
+      shortcut_count: 1,
+      active_milliseconds: 5000,
+    };
+  }
+  if (eventType === "page_visibility") {
+    return {
+      visibility_state: "hidden",
+      source: "frontend_demo",
+    };
+  }
+  if (eventType === "page_dwell_summary") {
+    return {
+      focused_seconds: 240,
+      hidden_seconds: 30,
+      hidden_count: 1,
+    };
+  }
+  if (eventType === "face_presence") {
+    return {
+      faces_detected: 1,
+      detector_name: "FaceDetector",
+      source: "frontend_camera_monitor",
+      absence_duration_seconds: 0,
+    };
+  }
+  if (eventType === "face_absence") {
+    return {
+      faces_detected: 0,
+      detector_name: "FaceDetector",
+      source: "frontend_camera_monitor",
+    };
+  }
+  if (eventType === "multiple_faces_detected") {
+    return {
+      faces_detected: 2,
+      detector_name: "FaceDetector",
+      source: "frontend_camera_monitor",
+    };
+  }
+  if (eventType === "camera_monitor_summary") {
+    return {
+      face_present_seconds: 120,
+      face_absent_seconds: 15,
+      longest_face_absence_seconds: 8,
+      absence_count: 1,
+      multiple_faces_seconds: 0,
+      multiple_faces_detected_count: 0,
+      detector_name: "FaceDetector",
+      source: "frontend_camera_monitor",
     };
   }
   if (eventType === "session_started") {
@@ -178,9 +865,46 @@ function translateErrorMessage(message) {
     "quiz_score must be an integer between 0 and 100": "quiz_score 必須是 0 到 100 的整數。",
     "card_swiped requires card_index in metadata_json": "card_swiped 必須帶入 card_index。",
     "card_index must be a positive integer": "card_index 必須是正整數。",
+    "answer_changed requires question_id, from_answer and to_answer in metadata_json": "answer_changed 必須帶入 question_id、from_answer 與 to_answer。",
+    "answer_changed question_id must be a non-empty string": "answer_changed question_id 必須是非空字串。",
+    "answer_changed from_answer must be a non-empty string": "answer_changed from_answer 必須是非空字串。",
+    "answer_changed to_answer must be a non-empty string": "answer_changed to_answer 必須是非空字串。",
+    "answer_changed from_answer and to_answer cannot be identical": "answer_changed 的前後答案不能相同。",
     "context_switch requires target and source in metadata_json": "context_switch 必須帶入 target 與 source。",
     "context_switch target must be a non-empty string": "context_switch target 必須是非空字串。",
     "context_switch source must be a non-empty string": "context_switch source 必須是非空字串。",
+    "mouse_activity requires move_count, click_count, scroll_count and active_milliseconds in metadata_json":
+      "mouse_activity 必須帶入 move_count、click_count、scroll_count 與 active_milliseconds。",
+    "keyboard_activity requires keydown_count and active_milliseconds in metadata_json":
+      "keyboard_activity 必須帶入 keydown_count 與 active_milliseconds。",
+    "page_visibility requires visibility_state and source in metadata_json":
+      "page_visibility 必須帶入 visibility_state 與 source。",
+    "page_visibility visibility_state must be visible or hidden": "page_visibility 的 visibility_state 只能是 visible 或 hidden。",
+    "page_visibility source must be a non-empty string": "page_visibility source 必須是非空字串。",
+    "page_dwell_summary requires focused_seconds, hidden_seconds and hidden_count in metadata_json":
+      "page_dwell_summary 必須帶入 focused_seconds、hidden_seconds 與 hidden_count。",
+    "face_presence requires source, detector_name and faces_detected in metadata_json":
+      "face_presence 必須帶入 source、detector_name 與 faces_detected。",
+    "face_absence requires source, detector_name and faces_detected in metadata_json":
+      "face_absence 必須帶入 source、detector_name 與 faces_detected。",
+    "multiple_faces_detected requires source, detector_name and faces_detected in metadata_json":
+      "multiple_faces_detected 必須帶入 source、detector_name 與 faces_detected。",
+    "camera_monitor_summary requires face_present_seconds in metadata_json":
+      "camera_monitor_summary 必須帶入 face_present_seconds。",
+    "camera_monitor_summary requires face_absent_seconds in metadata_json":
+      "camera_monitor_summary 必須帶入 face_absent_seconds。",
+    "camera_monitor_summary requires longest_face_absence_seconds in metadata_json":
+      "camera_monitor_summary 必須帶入 longest_face_absence_seconds。",
+    "camera_monitor_summary requires absence_count in metadata_json":
+      "camera_monitor_summary 必須帶入 absence_count。",
+    "camera_monitor_summary requires multiple_faces_seconds in metadata_json":
+      "camera_monitor_summary 必須帶入 multiple_faces_seconds。",
+    "camera_monitor_summary requires multiple_faces_detected_count in metadata_json":
+      "camera_monitor_summary 必須帶入 multiple_faces_detected_count。",
+    "camera_monitor_summary requires source in metadata_json":
+      "camera_monitor_summary 必須帶入 source。",
+    "camera_monitor_summary requires detector_name in metadata_json":
+      "camera_monitor_summary 必須帶入 detector_name。",
     "session_started source must be a non-empty string": "session_started source 必須是非空字串。",
     "Approved resolution requires a more specific justification note": "核准時請提供更具體的主管說明。",
   };
@@ -197,6 +921,27 @@ function setFeedback(element, variant, message, allowHtml = false) {
     return;
   }
   element.textContent = message;
+}
+
+function setPillStatus(element, ok, label) {
+  element.classList.remove("status-ok", "status-warn");
+  element.classList.add(ok ? "status-ok" : "status-warn");
+  element.textContent = label;
+}
+
+function renderCameraSupportStatus() {
+  setPillStatus(
+    elements.cameraSupportStatus,
+    state.cameraMonitor.supported,
+    state.cameraMonitor.supported ? "可用" : "不支援"
+  );
+}
+
+function renderCameraMonitorStatus(label, ok = false, message = "") {
+  setPillStatus(elements.cameraMonitorStatus, ok, label);
+  if (message) {
+    elements.cameraStatusMessage.textContent = message;
+  }
 }
 
 function renderReadiness() {
@@ -278,6 +1023,118 @@ async function submitSessionEvent(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+async function submitAutoEvent(eventType, metadataJson, options = {}) {
+  const sessionId = options.sessionId || state.currentSessionId;
+  if (!sessionId) {
+    return null;
+  }
+
+  return submitSessionEvent({
+    session_id: sessionId,
+    event_type: eventType,
+    event_timestamp: options.timestamp || new Date().toISOString(),
+    metadata_json: metadataJson,
+  });
+}
+
+async function flushTelemetryActivity() {
+  if (!isTelemetryEnabled() || state.telemetry.flushing) {
+    return;
+  }
+
+  state.telemetry.flushing = true;
+
+  try {
+    const mousePayload = {
+      move_count: state.telemetry.mouse.moveCount,
+      click_count: state.telemetry.mouse.clickCount,
+      scroll_count: state.telemetry.mouse.scrollCount,
+      active_milliseconds: Math.round(state.telemetry.mouse.activeMilliseconds),
+    };
+    const keyboardPayload = {
+      keydown_count: state.telemetry.keyboard.keydownCount,
+      shortcut_count: state.telemetry.keyboard.shortcutCount,
+      active_milliseconds: Math.round(state.telemetry.keyboard.activeMilliseconds),
+    };
+
+    if (mousePayload.move_count || mousePayload.click_count || mousePayload.scroll_count) {
+      await submitAutoEvent("mouse_activity", mousePayload);
+      state.telemetry.mouse = {
+        moveCount: 0,
+        clickCount: 0,
+        scrollCount: 0,
+        activeMilliseconds: 0,
+        lastEventAt: null,
+      };
+    }
+
+    if (keyboardPayload.keydown_count || keyboardPayload.shortcut_count) {
+      await submitAutoEvent("keyboard_activity", keyboardPayload);
+      state.telemetry.keyboard = {
+        keydownCount: 0,
+        shortcutCount: 0,
+        activeMilliseconds: 0,
+        lastEventAt: null,
+      };
+    }
+  } finally {
+    state.telemetry.flushing = false;
+  }
+}
+
+async function flushTelemetrySummary() {
+  if (!isTelemetryEnabled()) {
+    return;
+  }
+
+  await flushTelemetryActivity();
+  const dwellSummary = buildPageDwellSummary();
+  await submitAutoEvent("page_dwell_summary", dwellSummary);
+}
+
+async function handleVisibilityChange() {
+  if (!isTelemetryEnabled()) {
+    return;
+  }
+
+  const now = Date.now();
+  if (document.visibilityState === "hidden") {
+    if (state.telemetry.page.focusStartedAt !== null) {
+      state.telemetry.page.focusedMilliseconds += now - state.telemetry.page.focusStartedAt;
+      state.telemetry.page.focusStartedAt = null;
+    }
+    if (state.telemetry.page.hiddenStartedAt === null) {
+      state.telemetry.page.hiddenStartedAt = now;
+      state.telemetry.page.hiddenCount += 1;
+      await submitAutoEvent(
+        "page_visibility",
+        {
+          visibility_state: "hidden",
+          source: "frontend_auto_monitor",
+        },
+        { timestamp: new Date(now).toISOString() }
+      );
+    }
+    return;
+  }
+
+  if (state.telemetry.page.hiddenStartedAt !== null) {
+    state.telemetry.page.hiddenMilliseconds += now - state.telemetry.page.hiddenStartedAt;
+    state.telemetry.page.hiddenStartedAt = null;
+  }
+  if (state.telemetry.page.focusStartedAt === null) {
+    state.telemetry.page.focusStartedAt = now;
+  }
+  await submitAutoEvent(
+    "page_visibility",
+    {
+      visibility_state: "visible",
+      source: "frontend_auto_monitor",
+    },
+    { timestamp: new Date(now).toISOString() }
+  );
 }
 
 function formatDate(value) {
@@ -536,6 +1393,24 @@ async function createSession(event) {
 
     state.currentSessionId = payload.session_id;
     elements.currentSessionId.textContent = payload.session_id;
+    await submitAutoEvent(
+      "session_started",
+      { source: "frontend_auto_monitor" },
+      {
+        sessionId: payload.session_id,
+        timestamp: toIsoString(elements.sessionStartedAt.value),
+      }
+    );
+    startAutoTelemetry(payload.session_id);
+    setQuizDemoStatus("Session 已建立。現在直接改 Demo Quiz 題目，就會自動送出 answer_changed。", "is-info");
+    if (state.cameraMonitor.enabled) {
+      resetCameraSummary();
+      state.cameraMonitor.lastObservedAt = Date.now();
+      state.cameraMonitor.currentAbsenceStartedAt =
+        state.cameraMonitor.status === "face_absent" ? state.cameraMonitor.lastObservedAt : null;
+      renderCameraMonitorStatus("監測中", true, "鏡頭監測已啟用，這個 Session 會開始累積人臉 presence 摘要。");
+      await runCameraDetectionCycle();
+    }
     setFeedback(elements.sessionStatus, "is-success", `Session 已建立，ID：${payload.session_id}`);
     elements.eventMetadata.value = JSON.stringify({ source: "frontend" }, null, 2);
   } catch (error) {
@@ -556,6 +1431,11 @@ async function submitEvent(event) {
     let metadata = {};
     if (elements.eventMetadata.value.trim()) {
       metadata = JSON.parse(elements.eventMetadata.value);
+    }
+
+    if (elements.eventType.value === "session_completed" && isTelemetryEnabled()) {
+      await flushTelemetrySummary();
+      await flushCameraMonitorSummary();
     }
 
     const payload = await submitSessionEvent({
@@ -588,6 +1468,18 @@ async function submitEvent(event) {
     if (payload.generated_flags?.[0]?.flag_id) {
       await loadFlagDetail(payload.generated_flags[0].flag_id);
     }
+
+    if (elements.eventType.value === "session_completed") {
+      stopAutoTelemetry();
+      setQuizDemoStatus("Session 已完成。若要再測 answer_changed，請先建立新的 Session。", "muted");
+      if (state.cameraMonitor.enabled) {
+        renderCameraMonitorStatus("待 Session", true, "此 Session 已完成；鏡頭監測仍可保留開啟，下一個 Session 會重新開始累積摘要。");
+        resetCameraSummary();
+        state.cameraMonitor.status = "idle";
+        state.cameraMonitor.lastObservedAt = Date.now();
+        state.cameraMonitor.currentAbsenceStartedAt = null;
+      }
+    }
   } catch (error) {
     setFeedback(elements.eventStatus, "is-error", translateErrorMessage(error.message));
   }
@@ -602,6 +1494,11 @@ async function runScenario(scenarioKey) {
   setFeedback(elements.scenarioStatus, "is-info", `正在建立「${scenario.label}」案例...`);
 
   try {
+    state.scenarioRunning = true;
+    stopAutoTelemetry();
+    if (state.cameraMonitor.enabled) {
+      renderCameraMonitorStatus("Scenario 暫停", false, "為避免汙染 demo 資料，scenario 期間暫停鏡頭 evidence 寫入。");
+    }
     const startedAt = new Date();
     startedAt.setSeconds(startedAt.getSeconds() - 5);
     elements.sessionAgentId.value = scenario.agentId;
@@ -648,6 +1545,17 @@ async function runScenario(scenarioKey) {
     }
   } catch (error) {
     setFeedback(elements.scenarioStatus, "is-error", `案例模擬失敗：${translateErrorMessage(error.message)}`);
+  } finally {
+    state.scenarioRunning = false;
+    if (state.cameraMonitor.enabled) {
+      renderCameraMonitorStatus(
+        state.currentSessionId ? "監測中" : "待 Session",
+        true,
+        state.currentSessionId
+          ? "Scenario 已結束，鏡頭監測會繼續針對手動 Session 累積 presence 摘要。"
+          : "Scenario 已結束；建立新的手動 Session 後會繼續鏡頭 evidence 蒐集。"
+      );
+    }
   }
 }
 
@@ -702,12 +1610,15 @@ function bindEvents() {
   elements.eventForm.addEventListener("submit", submitEvent);
   elements.eventType.addEventListener("change", syncMetadataTemplate);
   elements.resolutionForm.addEventListener("submit", submitResolution);
+  elements.cameraStartButton.addEventListener("click", () => startCameraMonitor().catch(console.error));
+  elements.cameraStopButton.addEventListener("click", () => stopCameraMonitor().catch(console.error));
   document.querySelectorAll("[data-scenario]").forEach((node) => {
     node.addEventListener("click", () => runScenario(node.dataset.scenario).catch(console.error));
   });
 }
 
 setDefaultDatetimeInputs();
+detectCameraSupport();
 syncMetadataTemplate();
 bindEvents();
 loadHealth();
