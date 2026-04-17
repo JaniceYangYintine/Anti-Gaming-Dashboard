@@ -84,6 +84,127 @@
 - `GET /api/v1/flags/{flag_id}`
 - `POST /api/v1/flags/{flag_id}/resolution`
 
+## 架構圖
+```mermaid
+flowchart LR
+    %% ===== Nodes =====
+    U["👤 使用者 / 主管"]
+    FE["🖥️ Frontend Dashboard<br/>HTML / CSS / JavaScript"]
+
+    subgraph APP["Application Layer"]
+        direction TB
+        API["⚙️ FastAPI API<br/>app.main + api.router"]
+
+        R1["Health API"]
+        R2["Sessions API"]
+        R3["Session Events API"]
+        R4["Rules API"]
+        R5["Flags API"]
+
+        API --> R1
+        API --> R2
+        API --> R3
+        API --> R4
+        API --> R5
+    end
+
+    subgraph DOMAIN["Domain Services"]
+        direction TB
+        SS["SessionService"]
+        SES["SessionEventService"]
+        RE["RuleEvaluationService"]
+        RS["RuleService"]
+        FS["FlagService"]
+    end
+
+    subgraph DB["PostgreSQL"]
+        direction TB
+        T1[("learning_sessions")]
+        T2[("session_events")]
+        T3[("compliance_rules")]
+        T4[("flagged_sessions")]
+        T5[("compliance_audit_log")]
+        T6[("agents / managers / courses")]
+    end
+
+    %% ===== Flow =====
+    U --> FE
+    FE --> API
+
+    R2 --> SS
+    R3 --> SES
+    SES --> RE
+    R4 --> RS
+    R5 --> FS
+    RE --> FS
+
+    SS --> T1
+    SES --> T2
+    RE --> T3
+    RE --> T4
+    RE --> T1
+    FS --> T4
+    FS --> T5
+    T1 --> T6
+    T4 --> T6
+
+    %% ===== Styles =====
+    classDef user fill:#E8F0FE,stroke:#4A90E2,stroke-width:2px,color:#1F2D3D,font-weight:bold;
+    classDef frontend fill:#EAFBF3,stroke:#2E8B57,stroke-width:2px,color:#1F2D3D,font-weight:bold;
+    classDef api fill:#FFF4E5,stroke:#F5A623,stroke-width:2px,color:#1F2D3D,font-weight:bold;
+    classDef service fill:#F3E8FF,stroke:#8E44AD,stroke-width:2px,color:#1F2D3D;
+    classDef db fill:#FDEDEC,stroke:#C0392B,stroke-width:2px,color:#1F2D3D,font-weight:bold;
+    classDef table fill:#FFFFFF,stroke:#B03A2E,stroke-width:1.5px,color:#1F2D3D;
+
+    class U user;
+    class FE frontend;
+    class API,R1,R2,R3,R4,R5 api;
+    class SS,SES,RE,RS,FS service;
+    class T1,T2,T3,T4,T5,T6 table;
+```
+
+## 風險判斷流程
+```mermaid
+sequenceDiagram
+    %% ===== Participants =====
+    participant U as 👤 學員 / Demo
+    participant FE as 🖥️ Frontend Dashboard
+    participant SA as ⚙️ Sessions API
+    participant EA as ⚙️ Events API
+    participant RE as 🧠 Rule Engine
+    participant DB as 🗄️ PostgreSQL
+    participant M as 👨‍💼 主管
+
+    %% ===== User Flow =====
+    U->>FE: 開始課程 / 作答 / 切換頁籤
+    FE->>SA: 建立 Session<br/>POST /sessions
+    SA->>DB: 寫入 learning_sessions
+    DB-->>SA: 回傳 session_id
+
+    %% ===== Event Streaming =====
+    loop 🔁 行為持續上報
+        FE->>EA: 上報事件<br/>POST /session-events
+        EA->>DB: 寫入 session_events
+
+        %% Rule Evaluation
+        EA->>RE: evaluate(session_id)
+        RE->>DB: 讀取 Session + Rules
+        RE->>RE: ⚡ 異常行為判斷
+
+        alt 🚨 命中風險規則
+            RE->>DB: 寫入 flagged_sessions
+            RE->>DB: 更新 Session 狀態（鎖定 / 扣分）
+        else ✅ 正常行為
+            RE-->>EA: 通過
+        end
+    end
+
+    %% ===== Manager Flow =====
+    M->>FE: 查看 Risk Inbox / Timeline / Detail
+    FE->>DB: 查詢 flagged_sessions
+
+    M->>FE: 審核決策<br/>(approve / void / escalate)
+    FE->>DB: 寫入 compliance_audit_log
 ## 目前完成狀態
 - backend 與 database 已可在本機啟動
 - `schema.sql` 已可匯入 PostgreSQL
@@ -96,6 +217,7 @@
   - 觸發 flag
   - 完成 resolution
   - 寫入 audit log
+```
 
 ## 一句話總結
 這不是單純的學習平台功能，而是一套把學習行為轉成可監管、可審核、可追溯數位證據的合規風險控管系統。
