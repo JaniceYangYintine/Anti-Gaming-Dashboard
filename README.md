@@ -51,6 +51,11 @@
 - 前端支援一鍵模擬三種典型案例
 - 可快速展示規則判斷與畫面刷新流程
 
+### Learner Simulator
+- 新增 `frontend/learner.html` 作為簡單測驗平台
+- 學員可從課程卡片、測驗作答與瀏覽器切頁產生真實 session events
+- 完成測驗後可回到主管儀表板查看 Risk Inbox、Flag Detail 與 Timeline
+
 ### Auto Evidence Collection
 - 建立 Session 後，前端會自動監聽 `mousemove`、`click`、`wheel`
 - 自動監聽 `keydown` 與頁面 `visibilitychange`
@@ -240,6 +245,16 @@ sequenceDiagram
   - 寫入 audit log
 - 前端已可自動蒐集滑鼠、鍵盤、頁面可見度與停留時間證據
 - 前端已支援以 `data-question-id` 自動追蹤答案變更
+- 已新增學員測驗平台，可用真實操作產生 `context_switch`、`quiz_submitted`、`session_completed` 等事件
+- 學員測驗平台會把改答案內容與次數彙整到 `quiz_submitted.metadata_json`
+
+## Demo 路徑
+1. 啟動 backend 與前端 server。
+2. 打開 `http://127.0.0.1:3000/learner.html`。
+3. 按 `開始學習 Session`，閱讀卡片並完成測驗。
+4. 若要 demo 改答案紀錄，在同一題切換不同答案後再送出測驗。
+5. 若要 demo 切頁分心，開始 Session 後多次切到其他瀏覽器分頁，再回 learner 頁送出測驗。
+6. 回到 `http://127.0.0.1:3000/index.html` 查看 Risk Inbox 與 Forensic Timeline。
 
 ## 前端自動蒐證接法
 若要把自動蒐證接到真正的學習頁面，建議在題目欄位加入 `data-question-id`：

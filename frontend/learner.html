@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anti-Gaming Learner Simulator</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./learner.css" />
+  </head>
+  <body>
+    <div class="page-shell learner-shell">
+      <header class="learner-hero">
+        <div>
+          <p class="eyebrow">Learner Simulator</p>
+          <h1>學員測驗平台</h1>
+          <p>
+            這個頁面用來真實產生學習事件，讓 Anti-Gaming Dashboard 可以從 session events
+            辨識測驗時間、答案變更、切頁與頁面停留等風險訊號。
+          </p>
+        </div>
+        <div class="learner-actions">
+          <span id="learner-health" class="status-pill status-warn">檢查中</span>
+          <a class="ghost-button link-button" href="./index.html">回主管儀表板</a>
+          <a class="ghost-button link-button" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">API Docs</a>
+        </div>
+      </header>
+
+      <section class="learner-layout">
+        <main class="panel learner-main">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Course Player</p>
+              <h2 id="course-title">AML 防制洗錢必修</h2>
+            </div>
+            <span id="session-chip" class="status-pill status-warn">尚未開始</span>
+          </div>
+
+          <div class="learner-controls">
+            <label>
+              <span>學員</span>
+              <select id="learner-agent">
+                <option value="A1028">A1028｜陳冠宇</option>
+                <option value="A2041">A2041｜林怡君</option>
+                <option value="A3350">A3350｜黃品蓉</option>
+              </select>
+            </label>
+            <label>
+              <span>課程</span>
+              <select id="learner-course">
+                <option value="COURSE-AML-101">COURSE-AML-101｜AML 防制洗錢必修</option>
+                <option value="COURSE-INV-230">COURSE-INV-230｜投資型保單揭露規範</option>
+                <option value="COURSE-CROSS-120">COURSE-CROSS-120｜保險商品交叉銷售守則</option>
+              </select>
+            </label>
+            <button id="start-session-button" class="primary-button" type="button">開始學習 Session</button>
+          </div>
+
+          <section class="learner-card-stack" id="lesson-cards"></section>
+
+          <section class="quiz-player">
+            <div class="panel-head compact">
+              <div>
+                <p class="eyebrow">Quiz</p>
+                <h3>課後小測驗</h3>
+              </div>
+            </div>
+            <div id="quiz-form" class="quiz-form"></div>
+            <div class="form-actions">
+              <button id="submit-quiz-button" class="primary-button" type="button">送出測驗並完成 Session</button>
+            </div>
+          </section>
+        </main>
+
+        <aside class="panel learner-side">
+          <p class="eyebrow">Live Evidence</p>
+          <h2>事件與結果</h2>
+          <div class="current-session">
+            <span class="muted">目前 Session ID</span>
+            <strong id="learner-session-id">尚未建立</strong>
+          </div>
+          <div id="learner-feedback" class="empty-state">
+            <h3>準備開始</h3>
+            <p>請先開始 Session。</p>
+          </div>
+          <div id="event-log" class="event-log"></div>
+        </aside>
+      </section>
+    </div>
+
+    <div id="completion-modal" class="learner-modal" hidden>
+      <div class="learner-modal-card" role="dialog" aria-modal="true" aria-labelledby="completion-modal-title">
+        <p class="eyebrow">Quiz Complete</p>
+        <h2 id="completion-modal-title">已完成測驗</h2>
+        <p>你的測驗已成功送出，系統也已完成本次 Session 紀錄。</p>
+        <button id="completion-confirm-button" class="primary-button" type="button">確認</button>
+      </div>
+    </div>
+
+    <script src="./learner.js"></script>
+  </body>
+</html>

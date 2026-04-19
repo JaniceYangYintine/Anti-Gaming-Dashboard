@@ -308,3 +308,106 @@
 - 前端先檢查 `getUserMedia + FaceDetector` 是否可用
 - 若不支援，就顯示明確狀態，不強行啟用
 - 將鏡頭功能設計為可選配的輔助訊號，而不是唯一判定依據
+
+## 23. Learner Simulator 一開始太像測試工具，不像真實測驗平台
+### 問題
+第一版 learner simulator 為了快速 demo，曾提供「選擇測試情境」與一鍵按鈕，例如快速通關、盲猜、反覆改答、切頁分心等。這雖然方便展示，但看起來比較像後台測試工具，不像真正給學員使用的測驗平台。
+
+### 影響
+- 使用者操作前需要先理解情境模式，流程不自然
+- Demo 事件容易被解讀成「人工造資料」，而不是真實學習行為
+- 後續若要嫁接真實測驗平台，情境選擇與作弊按鈕都會變成需要移除的過渡設計
+
+### 解法
+- 移除 learner 頁面的「選擇測試情境」
+- 移除 `自動反覆改答 Q1` 與 `模擬 6 次切頁` 按鈕
+- 改成以真實操作產生事件：
+  - 同一題多次切換答案時先累積改答紀錄
+  - 送出測驗時把改答內容與次數寫進 `quiz_submitted.metadata_json`
+  - 瀏覽器切到其他分頁時自動送出切頁證據
+
+## 24. Learner Simulator 有 API 對接設計，但 backend 未啟動時會讓人誤以為功能壞掉
+### 問題
+learner 頁面使用 `POST /api/v1/sessions` 建立 session，並用 `POST /api/v1/session-events` 送出學習事件，因此它本身是有和 Anti-Gaming backend 對接的。不過若 `http://127.0.0.1:8000/health` 連不到，所有事件都無法真正寫進資料庫。
+
+### 影響
+- 前端頁面可操作，但事件不會進 backend
+- 使用者可能以為 learner 沒有和 Anti-Gaming 連線
+- 反覆改答、切頁分心等功能即使前端有送出，也無法在 Timeline 或 Risk Inbox 看到結果
+
+### 解法
+- 在 learner 頁首保留 API / DB health 狀態
+- 確認 backend 與 database 啟動後，再進行 learner 實測
+- 文件中明確要求先確認 `/health` 正常，再測改答案紀錄與 `context_switch`
+
+## 25. `answer_changed` 的第一個答案不能直接當成改答事件
+### 問題
+若學員第一次選擇某題答案時就送 `answer_changed`，後端會要求 `from_answer` 與 `to_answer` 都存在，且兩者不能相同。第一次作答沒有前一個答案，因此不能直接視為「改答」。
+
+### 影響
+- 若硬送第一個答案，metadata 可能不完整
+- 後端會回傳驗證錯誤
+- 反覆改答規則也會把「第一次正常作答」誤算成改答
+
+### 解法
+- learner 先把第一次選項記成 baseline
+- 只有同一題從既有答案切換到另一個答案時，才視為一次改答
+- 若要測 `REPEATED_ANSWER_CHANGES`，需要在同一題連續切換多次答案，例如 A -> B -> C -> A
+
+## 26. FastAPI validation detail 若直接丟進 Error，前端會顯示 `[object Object]`
+### 問題
+改答案失敗時，畫面曾顯示 `操作失敗 [object Object]`。原因是 FastAPI 422 validation error 的 `detail` 常是物件或陣列，前端原本直接 `throw new Error(payload.detail)`，瀏覽器會把物件轉成 `[object Object]`。
+
+### 影響
+- 使用者看不到真正錯誤原因
+- 無法判斷是欄位格式錯、event type 不支援、session 已完成，還是 backend 沒連上
+- 除錯成本提高
+
+### 解法
+- 在 learner 補上 `formatApiDetail`
+- 將 FastAPI 的陣列/物件錯誤整理成人可讀字串
+- 同步把 feedback 輸出做 HTML escape，避免錯誤內容被當作 HTML 注入頁面
+
+## 27. learner 送 `page_visibility` 時，現場 backend 版本仍只接受舊 event enum
+### 問題
+切換分頁時，learner 曾送出 `page_visibility`。但現場正在跑的 backend 回傳錯誤：
+`body.event_type: Input should be 'session_started', 'card_swiped', 'quiz_started', 'quiz_submitted', 'context_switch' or 'session_completed'`。
+
+這表示執行中的 backend schema 還是舊版，只接受 `context_switch` 等少數 event type；雖然目前本機程式碼已擴充 `page_visibility` / `page_dwell_summary`，但正在服務請求的 API 尚未同步到最新版本。
+
+### 影響
+- learner 一切頁就被 schema validation 擋下
+- 使用者會看到操作失敗
+- 切頁分心無法進 Timeline，也無法累加 `context_switch_count`
+
+### 解法
+- 為了讓 demo 穩定，learner 暫時改成在 `visibilitychange` 變成 hidden 時送 `context_switch`
+- metadata 保留 `visibility_state`、`hidden_count` 與 `source`，方便 Timeline 判讀來源
+- learner 不再送 `page_visibility` / `page_dwell_summary`，避免舊 backend enum 擋住
+- 未來若確定 backend 已重啟並支援新 enum，可再把 learner 切回更細的 `page_visibility` / `page_dwell_summary` 模式
+
+## 28. 現場 backend 版本也不接受 `answer_changed`
+### 問題
+修改答案時，learner 原本會送出 `answer_changed`。但現場正在跑的 backend enum 仍回傳：
+`body.event_type: Input should be 'session_started', 'card_swiped', 'quiz_started', 'quiz_submitted', 'context_switch' or 'session_completed'`。
+
+這代表正在執行的 API 不只不接受 `page_visibility`，也尚未接受 `answer_changed`。
+
+### 影響
+- 學員一改答案就會顯示操作失敗
+- 改答內容無法進資料庫
+- 使用者無法從 Timeline 判讀「改了哪題、從什麼答案改成什麼答案、改了幾次」
+
+### 解法
+- learner 暫時不再直接送 `answer_changed`
+- 第一次選答案只記為 baseline
+- 後續同一題切換答案時，前端先累積改答紀錄：
+  - `question_id`
+  - `from_answer`
+  - `to_answer`
+  - `question_change_count`
+  - `total_change_index`
+  - `changed_at`
+- 送出測驗時，將彙整結果寫入 `quiz_submitted.metadata_json`
+- 同步也把摘要放進 `session_completed.metadata_json`，方便在舊 backend enum 下仍能保留改答內容與次數
+- 未來若 backend 已重啟並支援 `answer_changed`，再改回逐筆事件上送，以利 rule engine 直接計算 `REPEATED_ANSWER_CHANGES`

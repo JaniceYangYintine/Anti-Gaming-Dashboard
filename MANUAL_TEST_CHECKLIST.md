@@ -1,5 +1,15 @@
 # Manual Test Checklist
 
+## 0. Learner Simulator：用真實測驗操作產生風險事件
+
+1. 確認 backend `/health` 正常，前端以 `http://127.0.0.1:3000` 開啟。
+2. 打開 `http://127.0.0.1:3000/learner.html`。
+3. 按 `開始學習 Session`，標記課程卡片並完成測驗。
+4. 若要測改答案紀錄，在同一題切換不同答案後送出測驗。
+5. 若要測切頁分心，開始 Session 後切到其他瀏覽器分頁再切回 learner，重複 4 次以上後送出測驗。
+6. 回 `http://127.0.0.1:3000/index.html`，確認 Forensic Timeline 出現 `quiz_submitted` 或 `context_switch`。
+7. 在 `quiz_submitted.metadata_json` 確認 `answer_change_count`、`answer_change_counts_by_question` 與 `answer_change_log` 有被記錄。
+
 ## 1. Demo Quiz：確認 `answer_changed` 真的有送出
 
 1. 啟動 backend 與 database，確認首頁 `System Readiness` 都正常。
