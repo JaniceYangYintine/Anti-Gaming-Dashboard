@@ -6,7 +6,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.schemas.session_event import SessionEventCreate, SessionEventResponse
-from app.services.rule_evaluation_service import RuleEvaluationService
+from app.services.rule_evaluation_service import (
+    BASE_MODULE_POINTS,
+    WEEKLY_REVIEW_REWARD_POINTS,
+    RuleEvaluationService,
+)
 
 
 class SessionEventService:
@@ -139,16 +143,22 @@ class SessionEventService:
         elif payload.event_type == "session_completed":
             db.execute(
                 text(
-                    """
-                    UPDATE learning_sessions
-                    SET finished_at = :finished_at,
-                        duration_seconds = EXTRACT(EPOCH FROM (:finished_at - started_at))::INTEGER
+                """
+                UPDATE learning_sessions
+                SET finished_at = :finished_at,
+                        duration_seconds = EXTRACT(EPOCH FROM (:finished_at - started_at))::INTEGER,
+                        leaderboard_points = :base_module_points,
+                        weekly_reward_points = :weekly_reward_points,
+                        streak_shield_locked = FALSE,
+                        module_completion_frozen = FALSE
                     WHERE session_id = :session_id
                     """
                 ),
                 {
                     "session_id": payload.session_id,
                     "finished_at": parsed_timestamp,
+                    "base_module_points": BASE_MODULE_POINTS,
+                    "weekly_reward_points": WEEKLY_REVIEW_REWARD_POINTS,
                 },
             )
 

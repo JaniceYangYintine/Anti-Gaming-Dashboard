@@ -56,7 +56,9 @@ CREATE TABLE learning_sessions (
   context_switch_count INTEGER NOT NULL DEFAULT 0,
   cards_swiped INTEGER NOT NULL DEFAULT 0,
   leaderboard_points INTEGER NOT NULL DEFAULT 0,
+  weekly_reward_points INTEGER NOT NULL DEFAULT 0,
   streak_shield_locked BOOLEAN NOT NULL DEFAULT FALSE,
+  module_completion_frozen BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -91,7 +93,8 @@ CREATE TABLE flagged_sessions (
   severity_level severity_level NOT NULL,
   risk_reason TEXT NOT NULL,
   leaderboard_points_revoked BOOLEAN NOT NULL DEFAULT FALSE,
-  streak_shield_locked BOOLEAN NOT NULL DEFAULT FALSE
+  streak_shield_locked BOOLEAN NOT NULL DEFAULT FALSE,
+  module_completion_frozen BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE UNIQUE INDEX uq_flagged_sessions_session_rule
@@ -108,7 +111,7 @@ CREATE INDEX idx_flagged_sessions_agent_timestamp
 
 CREATE TABLE compliance_audit_log (
   audit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  flag_id UUID NOT NULL REFERENCES flagged_sessions(flag_id) ON DELETE CASCADE,
+  flag_id UUID NOT NULL REFERENCES flagged_sessions(flag_id),
   manager_id VARCHAR(32) NOT NULL REFERENCES managers(manager_id),
   action_taken action_taken NOT NULL,
   manager_justification_notes TEXT NOT NULL,
@@ -117,6 +120,26 @@ CREATE TABLE compliance_audit_log (
 
 CREATE INDEX idx_compliance_audit_log_flag_created_at
   ON compliance_audit_log(flag_id, created_at DESC);
+
+COMMENT ON TABLE compliance_audit_log IS
+  'Append-only audit log. Supervisor resolution actions must be permanently retained.';
+
+CREATE OR REPLACE FUNCTION prevent_compliance_audit_log_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'compliance_audit_log is append-only; % is not allowed', TG_OP;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_compliance_audit_log_no_update_delete
+BEFORE UPDATE OR DELETE ON compliance_audit_log
+FOR EACH ROW
+EXECUTE FUNCTION prevent_compliance_audit_log_mutation();
+
+CREATE TRIGGER trg_compliance_audit_log_no_truncate
+BEFORE TRUNCATE ON compliance_audit_log
+FOR EACH STATEMENT
+EXECUTE FUNCTION prevent_compliance_audit_log_mutation();
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -140,7 +163,8 @@ VALUES
 INSERT INTO managers (manager_id, manager_name, department_name)
 VALUES
   ('M208', '李宜蓁', '合規管理處'),
-  ('M110', '蔡佩珊', '分行管理處');
+  ('M110', '蔡佩珊', '分行管理處'),
+  ('M336', '王建銘', '教育訓練處');
 
 INSERT INTO courses (course_id, course_name, expected_duration_seconds, passing_score)
 VALUES
@@ -152,17 +176,17 @@ INSERT INTO compliance_rules (rule_code, rule_name, description, parameter_json,
 VALUES
   (
     'IMPOSSIBLE_SPEED',
-    '不可能的完成速度',
-    '完成時間低於課程平均時間的 20%',
-    '{"min_course_average_ratio": 0.2}'::jsonb,
+    '異常速度',
+    '30 秒內完成或交卷，且答錯題數小於等於 5 題',
+    '{"max_duration_seconds": 30, "max_wrong_count": 5, "min_course_average_ratio": 0.2}'::jsonb,
     'high'
   ),
   (
     'BLIND_GUESSING',
-    '盲猜略過測驗',
-    '5 秒內完成測驗且得分為 0',
-    '{"max_quiz_seconds": 5, "score_equals": 0}'::jsonb,
-    'medium'
+    '盲猜略過',
+    '30 秒內交卷且答錯超過 8 題',
+    '{"max_quiz_seconds": 30, "min_wrong_count": 9}'::jsonb,
+    'low'
   ),
   (
     'EXCESSIVE_CONTEXT_SWITCH',
@@ -173,23 +197,23 @@ VALUES
   ),
   (
     'REPEATED_ANSWER_CHANGES',
-    '反覆修改答案',
-    '同一題多次改答或整體改答次數異常偏高',
-    '{"max_changes_per_question": 3, "min_total_changes": 5}'::jsonb,
+    '反覆改答',
+    '同一題改答達 10 次以上',
+    '{"max_changes_per_question": 10}'::jsonb,
     'medium'
   ),
   (
     'LOW_INPUT_ACTIVITY',
-    '低滑鼠鍵盤互動',
-    '課程期間滑鼠與鍵盤活躍比例過低，疑似掛機或非本人操作',
-    '{"min_active_ratio": 0.08, "max_input_events": 15}'::jsonb,
+    '低互動掛機',
+    '停留超過 10 分鐘未答題，疑似低互動掛機',
+    '{"min_duration_seconds": 600, "min_active_ratio": 0.08, "max_input_events": 15}'::jsonb,
     'medium'
   ),
   (
     'LOW_PAGE_FOCUS_RATIO',
-    '頁面有效停留不足',
-    '頁面停留焦點比例偏低或過度切離頁面',
-    '{"min_focus_ratio": 0.6, "max_hidden_count": 3}'::jsonb,
+    '切頁分心',
+    '一次 session 切頁超過 5 次或頁面焦點比例偏低',
+    '{"min_focus_ratio": 0.6, "max_hidden_count": 5}'::jsonb,
     'high'
   ),
   (
@@ -206,3 +230,11 @@ VALUES
     '{"max_multiple_faces_seconds": 10, "max_multiple_faces_detected_count": 0}'::jsonb,
     'high'
   );
+
+UPDATE compliance_rules
+SET is_active = FALSE
+WHERE rule_code IN (
+  'EXCESSIVE_CONTEXT_SWITCH',
+  'LONG_FACE_ABSENCE',
+  'MULTIPLE_FACES_PRESENT'
+);

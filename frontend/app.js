@@ -2,6 +2,7 @@ const API_BASE = "http://localhost:8000/api/v1";
 const TELEMETRY_FLUSH_INTERVAL_MS = 15000;
 const ACTIVE_INPUT_GAP_MS = 5000;
 const CAMERA_DETECTION_INTERVAL_MS = 3000;
+const DASHBOARD_HIDDEN_TIMELINE_EVENT_TYPES = new Set(["quiz_submitted", "session_completed"]);
 
 function createCameraMonitorState() {
   return {
@@ -63,6 +64,15 @@ const state = {
   selectedFlagId: null,
   items: [],
   currentSessionId: null,
+  sessionSearch: {
+    agentId: "",
+    courseId: "",
+  },
+  auditLogs: [],
+  auditFilters: {
+    managerId: "",
+    agentName: "",
+  },
   connectivity: {
     backend: false,
     database: false,
@@ -75,9 +85,18 @@ const state = {
 const elements = {
   apiHealth: document.querySelector("#api-health"),
   dbHealth: document.querySelector("#db-health"),
-  readinessChecks: document.querySelector("#readiness-checks"),
   readinessGuidance: document.querySelector("#readiness-guidance"),
   overviewGrid: document.querySelector("#overview-grid"),
+  recentSessionsList: document.querySelector("#recent-sessions-list"),
+  sessionDetailDrawer: document.querySelector("#session-detail-drawer"),
+  sessionDetailTitle: document.querySelector("#session-detail-title"),
+  sessionDetailSubtitle: document.querySelector("#session-detail-subtitle"),
+  sessionDetailContent: document.querySelector("#session-detail-content"),
+  sessionDetailClose: document.querySelector("#session-detail-close"),
+  sessionAgentFilter: document.querySelector("#session-agent-filter"),
+  sessionCourseFilter: document.querySelector("#session-course-filter"),
+  sessionSearchButton: document.querySelector("#session-search-button"),
+  recentSessionsRefreshButton: document.querySelector("#recent-sessions-refresh-button"),
   seededCases: document.querySelector("#seeded-cases"),
   flagList: document.querySelector("#flag-list"),
   detailEmpty: document.querySelector("#detail-empty"),
@@ -89,10 +108,11 @@ const elements = {
   sessionSummary: document.querySelector("#session-summary"),
   timelineList: document.querySelector("#timeline-list"),
   auditList: document.querySelector("#audit-list"),
+  auditManagerFilter: document.querySelector("#audit-manager-filter"),
+  auditAgentFilter: document.querySelector("#audit-agent-filter"),
   severityFilter: document.querySelector("#severity-filter"),
   statusFilter: document.querySelector("#status-filter"),
   queryInput: document.querySelector("#query-input"),
-  refreshButton: document.querySelector("#refresh-button"),
   sessionForm: document.querySelector("#session-form"),
   sessionAgentId: document.querySelector("#session-agent-id"),
   sessionCourseId: document.querySelector("#session-course-id"),
@@ -174,8 +194,23 @@ const statusLabel = {
   escalated_to_hr: "已升級 HR",
 };
 
+const ruleCodeLabel = {
+  REPEATED_ANSWER_CHANGES: "反覆改答",
+  LOW_PAGE_FOCUS_RATIO: "切頁分心",
+  BLIND_GUESSING: "盲猜略過",
+  IMPOSSIBLE_SPEED: "異常速度",
+  LOW_INPUT_ACTIVITY: "低互動掛機",
+  LONG_FACE_ABSENCE: "離開畫面過久",
+  MULTIPLE_FACES_PRESENT: "多人出現在畫面",
+  EXCESSIVE_CONTEXT_SWITCH: "切頁分心",
+};
+
 function badge(text, cls) {
   return `<span class="badge ${cls}">${text}</span>`;
+}
+
+function formatRuleLabel(ruleCode) {
+  return ruleCodeLabel[ruleCode] || ruleCode;
 }
 
 function toIsoString(datetimeLocalValue) {
@@ -191,8 +226,12 @@ function setDefaultDatetimeInputs() {
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
     .toISOString()
     .slice(0, 16);
-  elements.sessionStartedAt.value = local;
-  elements.eventTimestamp.value = local;
+  if (elements.sessionStartedAt) {
+    elements.sessionStartedAt.value = local;
+  }
+  if (elements.eventTimestamp) {
+    elements.eventTimestamp.value = local;
+  }
 }
 
 function resetTelemetryBuckets() {
@@ -450,6 +489,9 @@ function buildPageDwellSummary() {
 }
 
 function setQuizDemoStatus(message, variant = "muted") {
+  if (!elements.quizDemoStatus) {
+    return;
+  }
   elements.quizDemoStatus.classList.remove("is-info", "is-success", "is-error", "muted");
   elements.quizDemoStatus.classList.add(variant);
   elements.quizDemoStatus.textContent = message;
@@ -537,7 +579,9 @@ async function stopCameraMonitor() {
     supported: state.cameraMonitor.supported,
     detectorName: state.cameraMonitor.detectorName,
   };
-  elements.cameraPreview.srcObject = null;
+  if (elements.cameraPreview) {
+    elements.cameraPreview.srcObject = null;
+  }
   renderCameraSupportStatus();
   renderCameraMonitorStatus(
     state.cameraMonitor.supported ? "已停止" : "不支援",
@@ -565,8 +609,10 @@ async function startCameraMonitor() {
       audio: false,
     });
     const detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
-    elements.cameraPreview.srcObject = stream;
-    await elements.cameraPreview.play();
+    if (elements.cameraPreview) {
+      elements.cameraPreview.srcObject = stream;
+      await elements.cameraPreview.play();
+    }
 
     state.cameraMonitor.enabled = true;
     state.cameraMonitor.stream = stream;
@@ -664,6 +710,7 @@ async function runCameraDetectionCycle() {
     !state.cameraMonitor.enabled ||
     !state.cameraMonitor.detector ||
     state.cameraMonitor.detecting ||
+    !elements.cameraPreview ||
     elements.cameraPreview.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
   ) {
     return;
@@ -912,6 +959,9 @@ function translateErrorMessage(message) {
 }
 
 function setFeedback(element, variant, message, allowHtml = false) {
+  if (!element) {
+    return;
+  }
   element.classList.remove("is-error", "is-success", "is-info");
   if (variant) {
     element.classList.add(variant);
@@ -924,6 +974,9 @@ function setFeedback(element, variant, message, allowHtml = false) {
 }
 
 function setPillStatus(element, ok, label) {
+  if (!element) {
+    return;
+  }
   element.classList.remove("status-ok", "status-warn");
   element.classList.add(ok ? "status-ok" : "status-warn");
   element.textContent = label;
@@ -939,63 +992,33 @@ function renderCameraSupportStatus() {
 
 function renderCameraMonitorStatus(label, ok = false, message = "") {
   setPillStatus(elements.cameraMonitorStatus, ok, label);
-  if (message) {
+  if (message && elements.cameraStatusMessage) {
     elements.cameraStatusMessage.textContent = message;
   }
 }
 
 function renderReadiness() {
-  const checks = [
-    {
-      label: "Frontend",
-      value: "已啟動",
-      ok: true,
-    },
-    {
-      label: "Backend API",
-      value: state.connectivity.backend ? "已連線" : "未連線",
-      ok: state.connectivity.backend,
-    },
-    {
-      label: "Database",
-      value: state.connectivity.database ? "已連線" : "未連線",
-      ok: state.connectivity.database,
-    },
-  ];
-
-  elements.readinessChecks.innerHTML = checks
-    .map(
-      (item) => `
-        <div class="readiness-item">
-          <strong>${item.label}</strong>
-          <span class="status-pill ${item.ok ? "status-ok" : "status-warn"}">${item.value}</span>
-        </div>
-      `
-    )
-    .join("");
-
-  if (state.connectivity.backend && state.connectivity.database) {
-    elements.readinessGuidance.innerHTML = `
-      <div class="empty-state">
-        <h3>系統已可操作</h3>
-        <p>現在可以直接使用 Demo Scenarios、Session 建立、Event 送出與主管審核流程。</p>
-      </div>
-    `;
-    return;
-  }
-
-  const steps = [
-    !state.connectivity.backend ? "1. 在 `backend` 建立虛擬環境並安裝 `requirements.txt` 依賴。" : null,
-    !state.connectivity.backend ? "2. 準備 `.env` 後啟動 `uvicorn app.main:app --reload --port 8000`。" : null,
-    !state.connectivity.database ? "3. 安裝並啟動 PostgreSQL，匯入 `schema.sql`。" : null,
-    !state.connectivity.database ? "4. 執行 `python -m app.scripts.seed_dev_data` 匯入示範資料。" : null,
-  ].filter(Boolean);
-
   elements.readinessGuidance.innerHTML = `
-    <div class="empty-state">
-      <h3>還需要補齊本機後端環境</h3>
-      <p>目前前端已可瀏覽，但若要看到真實資料與完整互動，請先完成以下步驟：</p>
-      ${steps.map((step) => `<p>${step}</p>`).join("")}
+    <div class="empty-state risk-section">
+      <h4>異常規則</h4>
+      <div class="risk-rule-list">
+        <p class="risk-rule-low"><strong>低風險</strong>：盲猜略過，30 秒內交卷並且答錯超過 8 題，觸發 <strong>BLIND_GUESSING</strong></p>
+        <p class="risk-rule-low"><strong>低風險</strong>：空題過多，作答後仍保留過多未填答案，列為需留意行為</p>
+        <p class="risk-rule-medium"><strong>中風險</strong>：反覆改答，同一題改超過 10 次，觸發 <strong>REPEATED_ANSWER_CHANGES</strong></p>
+        <p class="risk-rule-medium"><strong>中風險</strong>：低互動掛機，停留超過 10 分鐘未答題，或超過 10 分鐘才開始答題，觸發 <strong>LOW_INPUT_ACTIVITY</strong></p>
+        <p class="risk-rule-high"><strong>高風險</strong>：異常速度，30 秒內完成/交卷，並且答錯題數小於以及等於 5 題，觸發 <strong>IMPOSSIBLE_SPEED</strong></p>
+        <p class="risk-rule-high"><strong>高風險</strong>：切頁分心，一次 session 切頁超過 5 次，或頁面焦點比例低於 60%，觸發 <strong>LOW_PAGE_FOCUS_RATIO</strong></p>
+        <p class="risk-rule-high"><strong>高風險</strong>：頁面停留不足，作答過程在題目頁停留時間明顯過短，單獨列為高風險觀察標籤</p>
+        <p class="risk-rule-normal"><strong>正常學習</strong>：慢慢看、正常答題、不切頁，應該不產生高風險 flag</p>
+      </div>
+    </div>
+    <div class="empty-state risk-section">
+      <h4>懲罰規則</h4>
+      <div class="risk-rule-list">
+        <p class="risk-rule-low"><strong>低風險懲罰</strong>：保留模組完成資格與積分，於學員測驗平台顯示提醒，供主管於 Dashboard 追蹤</p>
+        <p class="risk-rule-medium"><strong>中風險懲罰</strong>：測驗完成後不累計排行榜積分與本週獎勵積分，學員測驗平台發出提醒，但不鎖定連續學習保護、也不凍結完成資格</p>
+        <p class="risk-rule-high"><strong>高風險懲罰</strong>：測驗完成後停止累計排行榜積分與本週獎勵積分，鎖定連續學習保護，並凍結模組完成資格，待主管審核</p>
+      </div>
     </div>
   `;
 }
@@ -1150,11 +1173,21 @@ function formatDate(value) {
 
 function renderOverview(summary) {
   const severityCounts = summary.severity_counts || {};
+  const statusCounts = summary.status_counts || {};
+  const reviewedFlags =
+    statusCounts.approved || statusCounts.voided || statusCounts.escalated_to_hr
+      ? (statusCounts.approved || 0) +
+        (statusCounts.voided || 0) +
+        (statusCounts.escalated_to_hr || 0)
+      : Math.max((summary.total_flags || 0) - (summary.pending_flags || 0), 0);
+
   elements.overviewGrid.innerHTML = [
-    { label: "總標記數", value: summary.total_flags },
+    { label: "異常總標記數", value: summary.total_flags },
     { label: "待審事件", value: summary.pending_flags },
+    { label: "已審事件", value: reviewedFlags },
     { label: "高風險", value: severityCounts.high || 0 },
-    { label: "中低風險", value: (severityCounts.medium || 0) + (severityCounts.low || 0) },
+    { label: "中風險", value: severityCounts.medium || 0 },
+    { label: "低風險", value: severityCounts.low || 0 },
   ]
     .map(
       (item) => `
@@ -1168,6 +1201,10 @@ function renderOverview(summary) {
 }
 
 function renderSeededCases(items) {
+  if (!elements.seededCases) {
+    return;
+  }
+
   const preferredRuleOrder = [
     "IMPOSSIBLE_SPEED",
     "BLIND_GUESSING",
@@ -1244,6 +1281,247 @@ function renderFlagListError(message) {
   `;
 }
 
+function renderRecentSessions(items) {
+  if (!items.length) {
+    elements.recentSessionsList.innerHTML = `
+      <div class="empty-state">
+        <h3>目前沒有測驗 Session</h3>
+        <p>從學員測驗平台送出測驗後，這裡會顯示最新紀錄；若要找其他 Session，請用上方下拉選單篩選業務員或課程後再搜尋。</p>
+      </div>
+    `;
+    return;
+  }
+
+  elements.recentSessionsList.innerHTML = items
+    .map((item) => {
+      const isNormal = item.session_status === "normal";
+      return `
+        <article class="recent-session-card">
+          <div class="recent-session-main">
+            <div class="badge-row">
+              ${badge(isNormal ? "正常" : `異常 ${item.flag_count}`, isNormal ? "status-approved" : "severity-high")}
+              ${badge(item.finished_at ? "已完成" : "進行中", item.finished_at ? "status-approved" : "status-pending")}
+              ${badge(item.streak_shield_locked ? "連續學習保護鎖定" : "連續學習保護正常", item.streak_shield_locked ? "severity-high" : "status-approved")}
+              ${badge(item.module_completion_frozen ? "模組凍結" : "模組正常", item.module_completion_frozen ? "severity-high" : "status-approved")}
+            </div>
+            <h3>${escapeHtml(item.agent_name)}｜${escapeHtml(item.course_name)}</h3>
+            <p class="muted">${escapeHtml(item.branch_name)} · ${escapeHtml(item.agent_id)}</p>
+          </div>
+          <div class="recent-session-metrics">
+            <span>分數 <strong>${item.quiz_score ?? "-"}</strong></span>
+            <span>測驗秒數 <strong>${item.quiz_seconds ?? "-"}</strong></span>
+            <span>排行積分 <strong>${(item.leaderboard_points || 0) + (item.weekly_reward_points || 0)}</strong></span>
+            <span>風險數 <strong>${item.flag_count}</strong></span>
+          </div>
+          <p class="muted">
+            開始：${formatDate(item.started_at)}
+            ${item.finished_at ? `｜完成：${formatDate(item.finished_at)}` : ""}
+          </p>
+          <button class="ghost-button recent-session-detail-button" type="button" data-session-detail-id="${item.session_id}">
+            查看詳情
+          </button>
+        </article>
+      `;
+    })
+    .join("");
+
+  document.querySelectorAll("[data-session-detail-id]").forEach((node) => {
+    node.addEventListener("click", () => loadSessionDetail(node.dataset.sessionDetailId).catch(console.error));
+  });
+}
+
+function renderRecentSessionsError(message) {
+  elements.recentSessionsList.innerHTML = `
+    <div class="empty-state">
+      <h3>目前無法載入近期測驗 Sessions</h3>
+      <p>${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
+function renderSessionFilterOptions(agentOptions = [], courseOptions = []) {
+  if (elements.sessionAgentFilter) {
+    elements.sessionAgentFilter.innerHTML = [
+      `<option value="">全部業務員</option>`,
+      ...agentOptions.map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`),
+    ].join("");
+    elements.sessionAgentFilter.value = state.sessionSearch.agentId;
+  }
+
+  if (elements.sessionCourseFilter) {
+    elements.sessionCourseFilter.innerHTML = [
+      `<option value="">全部課程</option>`,
+      ...courseOptions.map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`),
+    ].join("");
+    elements.sessionCourseFilter.value = state.sessionSearch.courseId;
+  }
+}
+
+function extractMetadataList(timeline, key) {
+  return timeline.flatMap((event) => {
+    const value = event.metadata_json?.[key];
+    return Array.isArray(value) ? value : [];
+  });
+}
+
+function extractLatestMetadataObject(timeline, key) {
+  const latestEntry = [...timeline]
+    .reverse()
+    .find((event) => event.metadata_json && typeof event.metadata_json[key] === "object" && event.metadata_json[key] !== null);
+  return latestEntry?.metadata_json?.[key] || {};
+}
+
+function getDashboardTimelineEvents(timeline = []) {
+  return timeline.filter((event) => !DASHBOARD_HIDDEN_TIMELINE_EVENT_TYPES.has(event.event_type));
+}
+
+function renderAnswerSelectionSteps(questionId, changes, finalAnswers) {
+  const steps = [];
+  const firstChange = changes[0];
+  const baselineAnswer =
+    firstChange?.from_answer ??
+    finalAnswers?.[questionId] ??
+    null;
+
+  if (baselineAnswer !== null && baselineAnswer !== undefined) {
+    steps.push(`<p><strong>Baseline</strong>：${escapeHtml(baselineAnswer || "-")}</p>`);
+  }
+
+  changes.forEach((item, index) => {
+    steps.push(
+      `<p><strong>第 ${index + 1} 次改答</strong>：${escapeHtml(item.to_answer ?? "-")}</p>`
+    );
+  });
+
+  if (finalAnswers?.[questionId] !== undefined) {
+    steps.push(`<p class="muted">最後答案：${escapeHtml(finalAnswers[questionId] || "-")}</p>`);
+  }
+
+  return steps.join("");
+}
+
+function renderAnswerChangeHistory(answerChanges, finalAnswers) {
+  const groupedChanges = answerChanges.reduce((acc, item) => {
+    const questionId = item.question_id || "未命名題目";
+    if (!acc[questionId]) {
+      acc[questionId] = [];
+    }
+    acc[questionId].push(item);
+    return acc;
+  }, {});
+  const questionIds = Array.from(
+    new Set([
+      ...Object.keys(finalAnswers || {}),
+      ...Object.keys(groupedChanges),
+    ])
+  );
+
+  if (!questionIds.length) {
+    return `<p class="muted">這次測驗沒有偵測到改答案歷程。</p>`;
+  }
+
+  return questionIds
+    .map(
+      (questionId) => `
+        <article class="history-item">
+          <strong>${escapeHtml(questionId)}</strong>
+          ${renderAnswerSelectionSteps(questionId, groupedChanges[questionId] || [], finalAnswers)}
+          <p class="muted">
+            改答次數：${groupedChanges[questionId]?.length || 0}
+            ${groupedChanges[questionId]?.at(-1)?.changed_at ? `｜最後更新：${formatDate(groupedChanges[questionId].at(-1).changed_at)}` : ""}
+          </p>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderSessionTimeline(timeline) {
+  const visibleTimeline = getDashboardTimelineEvents(timeline);
+
+  if (!visibleTimeline.length) {
+    return `<p class="muted">這個 Session 尚無事件紀錄。</p>`;
+  }
+
+  return visibleTimeline
+    .map(
+      (event) => `
+        <article class="timeline-item">
+          <h4>${escapeHtml(event.event_type)}</h4>
+          <p>${formatDate(event.event_timestamp)}</p>
+          <pre class="timeline-metadata">${escapeHtml(JSON.stringify(event.metadata_json, null, 2))}</pre>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderSessionDetail(payload) {
+  const answerChanges = extractMetadataList(payload.timeline, "answer_change_log");
+  const finalAnswers = extractLatestMetadataObject(payload.timeline, "final_answers");
+  const ruleSummary = (payload.session.flag_rule_codes || []).length
+    ? payload.session.flag_rule_codes.map((ruleCode) => formatRuleLabel(ruleCode)).join("、")
+    : "正常";
+
+  elements.sessionDetailTitle.textContent = `${payload.session.agent_name}｜${payload.session.course_name}`;
+  elements.sessionDetailSubtitle.textContent = `${payload.session.agent_id} · ${payload.session.session_id}`;
+  elements.sessionDetailContent.innerHTML = `
+    <div class="detail-grid">
+      <section class="card">
+        <h3>Session 摘要</h3>
+        <div class="key-value-list">
+          <div class="key-value-item"><span class="muted">開始時間</span><strong>${formatDate(payload.session.started_at)}</strong></div>
+          <div class="key-value-item"><span class="muted">完成時間</span><strong>${payload.session.finished_at ? formatDate(payload.session.finished_at) : "尚未完成"}</strong></div>
+          <div class="key-value-item"><span class="muted">測驗分數</span><strong>${payload.session.quiz_score ?? "-"}</strong></div>
+          <div class="key-value-item"><span class="muted">測驗秒數</span><strong>${payload.session.quiz_seconds ?? "-"}</strong></div>
+          <div class="key-value-item"><span class="muted">排行榜積分</span><strong>${payload.session.leaderboard_points ?? 0}</strong></div>
+          <div class="key-value-item"><span class="muted">本週獎勵</span><strong>${payload.session.weekly_reward_points ?? 0}</strong></div>
+          <div class="key-value-item"><span class="muted">連續學習保護</span><strong>${payload.session.streak_shield_locked ? "暫時鎖定" : "未鎖定"}</strong></div>
+          <div class="key-value-item"><span class="muted">模組完成資格</span><strong>${payload.session.module_completion_frozen ? "已凍結" : "正常"}</strong></div>
+          <div class="key-value-item"><span class="muted">切頁次數</span><strong>${payload.session.context_switch_count}</strong></div>
+          <div class="key-value-item"><span class="muted">事件數</span><strong>${payload.session.event_count}</strong></div>
+          <div class="key-value-item"><span class="muted">最新事件</span><strong>${payload.session.latest_event_type ? escapeHtml(payload.session.latest_event_type) : "無"}</strong></div>
+          <div class="key-value-item"><span class="muted">風險摘要</span><strong>${escapeHtml(ruleSummary)}</strong></div>
+        </div>
+      </section>
+    </div>
+    <div class="detail-grid">
+      <section class="card">
+        <h3>改答案歷程</h3>
+        <div class="history-list">${renderAnswerChangeHistory(answerChanges, finalAnswers)}</div>
+      </section>
+      <section class="card">
+        <h3>完整事件 Timeline</h3>
+        <div class="timeline-list">${renderSessionTimeline(payload.timeline)}</div>
+      </section>
+    </div>
+  `;
+  elements.sessionDetailDrawer.classList.remove("hidden");
+}
+
+async function loadSessionDetail(sessionId) {
+  elements.sessionDetailDrawer.classList.remove("hidden");
+  elements.sessionDetailTitle.textContent = "載入測驗詳情中";
+  elements.sessionDetailSubtitle.textContent = sessionId;
+  elements.sessionDetailContent.innerHTML = `<p class="muted">正在讀取完整歷程。</p>`;
+
+  try {
+    const payload = await fetchJson(`${API_BASE}/sessions/${sessionId}`);
+    renderSessionDetail(payload);
+  } catch (error) {
+    elements.sessionDetailContent.innerHTML = `
+      <div class="empty-state">
+        <h3>無法載入測驗詳情</h3>
+        <p>${escapeHtml(translateErrorMessage(error.message))}</p>
+      </div>
+    `;
+  }
+}
+
+function closeSessionDetail() {
+  elements.sessionDetailDrawer.classList.add("hidden");
+}
+
 function renderKeyValue(container, rows) {
   container.innerHTML = rows
     .map(
@@ -1255,6 +1533,63 @@ function renderKeyValue(container, rows) {
       `
     )
     .join("");
+}
+
+function renderAuditFilterOptions(auditLogs) {
+  if (elements.auditManagerFilter) {
+    const managers = Array.from(
+      new Map(auditLogs.map((item) => [item.manager_id, `${item.manager_name}｜${item.manager_id}`])).entries()
+    );
+    elements.auditManagerFilter.innerHTML = [
+      `<option value="">全部主管</option>`,
+      ...managers.map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`),
+    ].join("");
+    elements.auditManagerFilter.value = state.auditFilters.managerId;
+  }
+
+  if (elements.auditAgentFilter) {
+    const agents = Array.from(
+      new Set(auditLogs.map((item) => item.agent_name).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b, "zh-Hant"));
+    elements.auditAgentFilter.innerHTML = [
+      `<option value="">全部業務員</option>`,
+      ...agents.map((agentName) => `<option value="${escapeHtml(agentName)}">${escapeHtml(agentName)}</option>`),
+    ].join("");
+    elements.auditAgentFilter.value = state.auditFilters.agentName;
+  }
+}
+
+function renderAuditTrail() {
+  const filteredLogs = state.auditLogs.filter((item) => {
+    const matchesManager = !state.auditFilters.managerId || item.manager_id === state.auditFilters.managerId;
+    const matchesAgent = !state.auditFilters.agentName || item.agent_name === state.auditFilters.agentName;
+    return matchesManager && matchesAgent;
+  });
+
+  elements.auditList.innerHTML = filteredLogs.length
+    ? filteredLogs
+        .map(
+          (item) => `
+            <article class="audit-item">
+              ${
+                item.agent_name || item.course_name || item.rule_code
+                  ? `<p class="eyebrow">${escapeHtml([item.agent_name, item.course_name, formatRuleLabel(item.rule_code)].filter(Boolean).join("｜"))}</p>`
+                  : ""
+              }
+              <h4>${escapeHtml(item.manager_name)}（${escapeHtml(item.manager_id)}）</h4>
+              <p>${statusLabel[item.action_taken]}</p>
+              <p>${escapeHtml(item.manager_justification_notes)}</p>
+              <p>${formatDate(item.created_at)}</p>
+            </article>
+          `
+        )
+        .join("")
+    : `<p class="muted">目前沒有符合篩選條件的稽核紀錄。</p>`;
+}
+
+function setAuditFilter(filterKey, value) {
+  state.auditFilters[filterKey] = value;
+  renderAuditTrail();
 }
 
 function renderDetail(payload) {
@@ -1269,8 +1604,7 @@ function renderDetail(payload) {
   `;
 
   renderKeyValue(elements.ruleSummary, [
-    { label: "規則名稱", value: payload.rule.rule_name },
-    { label: "規則代碼", value: payload.rule.rule_code },
+    { label: "異常標籤", value: formatRuleLabel(payload.rule.rule_code) },
     { label: "說明", value: payload.rule.description },
     { label: "風險摘要", value: payload.flag.risk_reason },
   ]);
@@ -1281,38 +1615,18 @@ function renderDetail(payload) {
     { label: "完成秒數", value: payload.session.duration_seconds ?? "-" },
     { label: "測驗秒數", value: payload.session.quiz_seconds ?? "-" },
     { label: "測驗分數", value: payload.session.quiz_score ?? "-" },
+    { label: "排行榜積分", value: payload.session.leaderboard_points ?? 0 },
+    { label: "本週獎勵", value: payload.session.weekly_reward_points ?? 0 },
+    { label: "連續學習保護", value: payload.session.streak_shield_locked ? "暫時鎖定" : "未鎖定" },
+    { label: "模組完成資格", value: payload.session.module_completion_frozen ? "已凍結" : "正常" },
     { label: "切換次數", value: payload.session.context_switch_count },
-    { label: "滑卡數", value: payload.session.cards_swiped },
   ]);
 
-  elements.timelineList.innerHTML = payload.timeline.length
-    ? payload.timeline
-        .map(
-          (item) => `
-            <article class="timeline-item">
-              <h4>${item.event_type}</h4>
-              <p>${formatDate(item.event_timestamp)}</p>
-              <p>${JSON.stringify(item.metadata_json)}</p>
-            </article>
-          `
-        )
-        .join("")
-    : `<p class="muted">目前沒有 session event 資料。</p>`;
-
-  elements.auditList.innerHTML = payload.audit_logs.length
-    ? payload.audit_logs
-        .map(
-          (item) => `
-            <article class="audit-item">
-              <h4>${item.manager_name}（${item.manager_id}）</h4>
-              <p>${statusLabel[item.action_taken]}</p>
-              <p>${item.manager_justification_notes}</p>
-              <p>${formatDate(item.created_at)}</p>
-            </article>
-          `
-        )
-        .join("")
-    : `<p class="muted">目前尚無稽核紀錄。</p>`;
+  elements.timelineList.innerHTML = renderSessionTimeline(payload.timeline);
+  state.auditLogs = payload.audit_logs || [];
+  state.auditFilters = { managerId: "", agentName: "" };
+  renderAuditFilterOptions(state.auditLogs);
+  renderAuditTrail();
 }
 
 function renderDetailError(message) {
@@ -1366,6 +1680,41 @@ async function loadFlags() {
     renderSeededCases([]);
     renderDetailError("當 backend API 可用後，這裡會顯示 flag 的規則命中原因、session 指標與 timeline。");
   }
+}
+
+async function loadRecentSessions() {
+  try {
+    const hasFilters = Boolean(state.sessionSearch.agentId || state.sessionSearch.courseId);
+    const params = new URLSearchParams({
+      limit: hasFilters ? "50" : "3",
+    });
+    if (state.sessionSearch.agentId) {
+      params.set("agent_id", state.sessionSearch.agentId);
+    }
+    if (state.sessionSearch.courseId) {
+      params.set("course_id", state.sessionSearch.courseId);
+    }
+
+    const payload = await fetchJson(`${API_BASE}/sessions/recent?${params.toString()}`);
+    renderSessionFilterOptions(payload.agent_options, payload.course_options);
+    renderRecentSessions(payload.items);
+  } catch (error) {
+    renderRecentSessionsError(`請先確認 backend 與 database 已啟動。${translateErrorMessage(error.message)}`);
+  }
+}
+
+function searchRecentSessions() {
+  state.sessionSearch.agentId = elements.sessionAgentFilter?.value || "";
+  state.sessionSearch.courseId = elements.sessionCourseFilter?.value || "";
+  closeSessionDetail();
+  loadRecentSessions().catch(console.error);
+}
+
+function refreshRecentSessions() {
+  state.sessionSearch.agentId = "";
+  state.sessionSearch.courseId = "";
+  closeSessionDetail();
+  loadRecentSessions().catch(console.error);
 }
 
 async function loadFlagDetail(flagId) {
@@ -1449,7 +1798,7 @@ async function submitEvent(event) {
       const summaries = payload.generated_flags
         .map(
           (item) =>
-            `${severityLabel[item.severity_level] || item.severity_level}｜${item.rule_code}｜${item.risk_reason}`
+            `${severityLabel[item.severity_level] || item.severity_level}｜${formatRuleLabel(item.rule_code)}｜${item.risk_reason}`
         )
         .map((line) => `- ${escapeHtml(line)}`)
         .join("<br>");
@@ -1464,6 +1813,7 @@ async function submitEvent(event) {
     }
 
     await loadFlags();
+    await loadRecentSessions();
 
     if (payload.generated_flags?.[0]?.flag_id) {
       await loadFlagDetail(payload.generated_flags[0].flag_id);
@@ -1501,10 +1851,18 @@ async function runScenario(scenarioKey) {
     }
     const startedAt = new Date();
     startedAt.setSeconds(startedAt.getSeconds() - 5);
-    elements.sessionAgentId.value = scenario.agentId;
-    elements.sessionCourseId.value = scenario.courseId;
-    elements.sessionStartedAt.value = toDatetimeLocalValue(startedAt);
-    elements.eventTimestamp.value = toDatetimeLocalValue(startedAt);
+    if (elements.sessionAgentId) {
+      elements.sessionAgentId.value = scenario.agentId;
+    }
+    if (elements.sessionCourseId) {
+      elements.sessionCourseId.value = scenario.courseId;
+    }
+    if (elements.sessionStartedAt) {
+      elements.sessionStartedAt.value = toDatetimeLocalValue(startedAt);
+    }
+    if (elements.eventTimestamp) {
+      elements.eventTimestamp.value = toDatetimeLocalValue(startedAt);
+    }
 
     const sessionPayload = await createSessionRequest({
       agent_id: scenario.agentId,
@@ -1527,6 +1885,7 @@ async function runScenario(scenarioKey) {
     }
 
     await loadFlags();
+    await loadRecentSessions();
 
     if (latestResponse?.generated_flags?.[0]?.flag_id) {
       await loadFlagDetail(latestResponse.generated_flags[0].flag_id);
@@ -1560,6 +1919,9 @@ async function runScenario(scenarioKey) {
 }
 
 function syncMetadataTemplate() {
+  if (!elements.eventType || !elements.eventMetadata) {
+    return;
+  }
   const template = buildDefaultMetadata(elements.eventType.value);
   elements.eventMetadata.value = JSON.stringify(template, null, 2);
 }
@@ -1584,15 +1946,18 @@ async function submitResolution(event) {
     });
 
     const streakStatus = payload.session.streak_shield_locked ? "仍為鎖定" : "已解鎖";
+    const totalPoints = (payload.session.leaderboard_points || 0) + (payload.session.weekly_reward_points || 0);
     const pointStatus =
-      payload.session.leaderboard_points === 0
+      totalPoints === 0
         ? "排行榜積分目前為 0"
-        : `排行榜積分目前為 ${payload.session.leaderboard_points}`;
+        : `排行榜積分目前為 ${totalPoints}`;
+    const moduleStatus = payload.session.module_completion_frozen ? "模組完成資格仍凍結" : "模組完成資格正常";
     setFeedback(
       elements.resolutionStatus,
       "is-success",
-      `已更新為「${statusLabel[payload.flag.resolution_status]}」，${streakStatus}，${pointStatus}`
+      `已更新為「${statusLabel[payload.flag.resolution_status]}」，${streakStatus}，${pointStatus}，${moduleStatus}`
     );
+    renderDetail(payload);
     await loadFlags();
     await loadFlagDetail(state.selectedFlagId);
   } catch (error) {
@@ -1605,13 +1970,21 @@ function bindEvents() {
     node.addEventListener("change", () => loadFlags().catch(console.error));
   });
   elements.queryInput.addEventListener("input", () => loadFlags().catch(console.error));
-  elements.refreshButton.addEventListener("click", () => loadFlags().catch(console.error));
-  elements.sessionForm.addEventListener("submit", createSession);
-  elements.eventForm.addEventListener("submit", submitEvent);
-  elements.eventType.addEventListener("change", syncMetadataTemplate);
+  elements.sessionSearchButton?.addEventListener("click", searchRecentSessions);
+  elements.recentSessionsRefreshButton?.addEventListener("click", refreshRecentSessions);
+  elements.sessionForm?.addEventListener("submit", createSession);
+  elements.eventForm?.addEventListener("submit", submitEvent);
+  elements.eventType?.addEventListener("change", syncMetadataTemplate);
   elements.resolutionForm.addEventListener("submit", submitResolution);
-  elements.cameraStartButton.addEventListener("click", () => startCameraMonitor().catch(console.error));
-  elements.cameraStopButton.addEventListener("click", () => stopCameraMonitor().catch(console.error));
+  elements.sessionDetailClose?.addEventListener("click", closeSessionDetail);
+  elements.auditManagerFilter?.addEventListener("change", () =>
+    setAuditFilter("managerId", elements.auditManagerFilter.value)
+  );
+  elements.auditAgentFilter?.addEventListener("change", () =>
+    setAuditFilter("agentName", elements.auditAgentFilter.value)
+  );
+  elements.cameraStartButton?.addEventListener("click", () => startCameraMonitor().catch(console.error));
+  elements.cameraStopButton?.addEventListener("click", () => stopCameraMonitor().catch(console.error));
   document.querySelectorAll("[data-scenario]").forEach((node) => {
     node.addEventListener("click", () => runScenario(node.dataset.scenario).catch(console.error));
   });
@@ -1623,3 +1996,4 @@ syncMetadataTemplate();
 bindEvents();
 loadHealth();
 loadFlags().catch(console.error);
+loadRecentSessions().catch(console.error);

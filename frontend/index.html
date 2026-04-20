@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Anti-Gaming Dashboard</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260421-streak-zh" />
   </head>
   <body>
     <div class="page-shell">
@@ -36,226 +36,53 @@
         <div class="panel-head">
           <div>
             <p class="eyebrow">System Readiness</p>
-            <h2>本機啟動檢查</h2>
+            <h2>規則與懲罰</h2>
           </div>
         </div>
         <div class="readiness-grid">
-          <article class="card readiness-card">
-            <h3>目前狀態</h3>
-            <div id="readiness-checks" class="readiness-list"></div>
-          </article>
-          <article class="card readiness-card">
-            <h3>下一步建議</h3>
-            <div id="readiness-guidance" class="readiness-guidance">
-              <p class="muted">系統正在檢查 backend 與 database 狀態。</p>
-            </div>
-          </article>
+          <div id="readiness-guidance" class="readiness-guidance">
+            <p class="muted">系統正在載入規則清單。</p>
+          </div>
+          <aside class="overview-grid overview-sidebar" id="overview-grid"></aside>
         </div>
       </section>
 
-      <section class="overview-grid" id="overview-grid"></section>
-
-      <section class="panel demo-panel">
+      <section class="panel recent-sessions-panel">
         <div class="panel-head">
           <div>
-            <p class="eyebrow">Demo Checklist</p>
-            <h2>交件前快速確認</h2>
+            <p class="eyebrow">Recent Quiz Sessions</p>
+            <h2>近期測驗 Sessions</h2>
           </div>
         </div>
-        <div class="demo-grid">
-          <article class="card demo-card">
-            <h3>已建立案例</h3>
-            <div id="seeded-cases" class="seeded-case-list"></div>
-          </article>
-          <article class="card demo-card">
-            <h3>展示順序</h3>
-            <div class="demo-checklist">
-              <p>1. 確認 `System Readiness` 三個狀態都顯示正常。</p>
-              <p>2. 從 `已建立案例` 快速切到任一 flag，展示 Risk Inbox 與 Detail。</p>
-              <p>3. 點 `Demo Scenarios` 跑一個新案例，觀察自動新增 flag。</p>
-              <p>4. 在 `Resolution Action Bar` 完成主管審核。</p>
-              <p>5. 最後展示 `Audit Trail` 已留下操作紀錄。</p>
-            </div>
-          </article>
+        <div class="session-search-bar">
+          <label class="session-search-field">
+            <span>業務員</span>
+            <select id="session-agent-filter">
+              <option value="">全部業務員</option>
+            </select>
+          </label>
+          <label class="session-search-field">
+            <span>課程</span>
+            <select id="session-course-filter">
+              <option value="">全部課程</option>
+            </select>
+          </label>
+          <button id="session-search-button" type="button" class="ghost-button session-search-action">搜尋</button>
+          <button id="recent-sessions-refresh-button" type="button" class="ghost-button session-search-action">重新整理</button>
         </div>
-      </section>
-
-      <section class="panel flow-panel">
-        <div class="panel-head">
-          <div>
-            <p class="eyebrow">Testing Flow</p>
-            <h2>Session 建立與事件模擬</h2>
-          </div>
+        <div id="recent-sessions-list" class="recent-sessions-list">
+          <p class="muted">正在載入近期測驗資料。</p>
         </div>
-
-        <section class="card scenario-card">
+        <div id="session-detail-drawer" class="session-detail-drawer hidden">
           <div class="panel-head compact">
             <div>
-              <p class="eyebrow">Demo Scenarios</p>
-              <h3>一鍵模擬典型案例</h3>
+              <p class="eyebrow">Session Detail</p>
+              <h3 id="session-detail-title">測驗詳情</h3>
+              <p id="session-detail-subtitle" class="muted"></p>
             </div>
+            <button id="session-detail-close" type="button" class="ghost-button">關閉</button>
           </div>
-          <div class="scenario-grid">
-            <button type="button" class="scenario-button" data-scenario="impossible_speed">
-              <strong>不可能的完成速度</strong>
-              <span>快速完成課程，產生高風險 flag</span>
-            </button>
-            <button type="button" class="scenario-button" data-scenario="blind_guessing">
-              <strong>盲猜略過測驗</strong>
-              <span>4 秒交卷且得分 0，產生中風險 flag</span>
-            </button>
-            <button type="button" class="scenario-button" data-scenario="context_switch">
-              <strong>高頻切換視窗</strong>
-              <span>多次切頁後完成課程，產生高風險 flag</span>
-            </button>
-          </div>
-          <p id="scenario-status" class="muted"></p>
-        </section>
-
-        <div class="flow-grid">
-          <section class="card">
-            <h3>1. 建立 Session</h3>
-            <form id="session-form" class="resolution-form">
-              <div class="form-grid">
-                <label>
-                  <span>業務員 ID</span>
-                  <select id="session-agent-id">
-                    <option value="A1028">A1028｜陳冠宇</option>
-                    <option value="A2041">A2041｜林怡君</option>
-                    <option value="A3350">A3350｜黃品蓉</option>
-                  </select>
-                </label>
-                <label>
-                  <span>課程 ID</span>
-                  <select id="session-course-id">
-                    <option value="COURSE-AML-101">COURSE-AML-101｜AML 防制洗錢必修</option>
-                    <option value="COURSE-INV-230">COURSE-INV-230｜投資型保單揭露規範</option>
-                    <option value="COURSE-CROSS-120">COURSE-CROSS-120｜保險商品交叉銷售守則</option>
-                  </select>
-                </label>
-              </div>
-              <label>
-                <span>開始時間</span>
-                <input id="session-started-at" type="datetime-local" />
-              </label>
-              <div class="form-actions">
-                <button type="submit" class="primary-button">建立 Session</button>
-                <span id="session-status" class="muted"></span>
-              </div>
-            </form>
-          </section>
-
-          <section class="card camera-card">
-            <h3>2. 鏡頭 Presence Monitor</h3>
-            <p class="muted">
-              只在瀏覽器本地做臉部存在偵測，不錄影、不上傳畫面，只送出是否有人臉、離開畫面時長與多人出現摘要。
-            </p>
-            <div class="camera-preview-shell">
-              <video id="camera-preview" class="camera-preview" autoplay playsinline muted></video>
-            </div>
-            <div class="camera-actions">
-              <button id="camera-start-button" type="button" class="primary-button">啟用鏡頭監測</button>
-              <button id="camera-stop-button" type="button" class="ghost-button">停止鏡頭監測</button>
-            </div>
-            <div class="camera-status-list">
-              <div class="readiness-item">
-                <strong>鏡頭功能</strong>
-                <span id="camera-support-status" class="status-pill status-warn">檢查中</span>
-              </div>
-              <div class="readiness-item">
-                <strong>目前狀態</strong>
-                <span id="camera-monitor-status" class="status-pill status-warn">未啟用</span>
-              </div>
-            </div>
-            <p id="camera-status-message" class="muted">建立 Session 後若已啟用鏡頭監測，系統會自動把鏡頭 presence 資訊寫入事件流。</p>
-          </section>
-
-          <section class="card quiz-demo-card">
-            <h3>2.5 Demo Quiz</h3>
-            <p class="muted">
-              建立 Session 後，先選一次答案建立基準，再改成其他選項，就能在 Timeline 看到 `answer_changed`。
-            </p>
-            <div class="quiz-demo-grid">
-              <fieldset class="quiz-question">
-                <legend>Q1. AML 可疑交易發現後，應先做什麼？</legend>
-                <label class="choice-option">
-                  <input type="radio" name="demo-q1" value="report_immediately" data-question-id="DEMO-Q1" />
-                  <span>立即依程序通報</span>
-                </label>
-                <label class="choice-option">
-                  <input type="radio" name="demo-q1" value="wait_next_day" data-question-id="DEMO-Q1" />
-                  <span>隔天再處理</span>
-                </label>
-                <label class="choice-option">
-                  <input type="radio" name="demo-q1" value="ignore_once" data-question-id="DEMO-Q1" />
-                  <span>先忽略一次</span>
-                </label>
-              </fieldset>
-
-              <label class="quiz-question">
-                <span>Q2. 你對鏡頭 presence 監測的判斷是？</span>
-                <select data-question-id="DEMO-Q2">
-                  <option value="">請選擇</option>
-                  <option value="support">可作為輔助訊號</option>
-                  <option value="core">可作為唯一判定依據</option>
-                  <option value="disabled">完全不需要</option>
-                </select>
-              </label>
-
-              <label class="quiz-question">
-                <span>Q3. 補充說明</span>
-                <textarea
-                  rows="3"
-                  data-question-id="DEMO-Q3"
-                  placeholder="先輸入一段，再修改一次，就會觸發 answer_changed。"
-                ></textarea>
-              </label>
-            </div>
-            <p id="quiz-demo-status" class="muted">尚未建立 Session。建立後操作題目即可在畫面上看到答案變更事件提示。</p>
-          </section>
-
-          <section class="card">
-            <h3>3. 送出 Session Event</h3>
-            <div class="current-session">
-              <span class="muted">目前 Session ID</span>
-              <strong id="current-session-id">尚未建立</strong>
-            </div>
-            <form id="event-form" class="resolution-form">
-              <div class="form-grid">
-                <label>
-                  <span>事件類型</span>
-                  <select id="event-type">
-                    <option value="session_started">session_started</option>
-                    <option value="card_swiped">card_swiped</option>
-                    <option value="answer_changed">answer_changed</option>
-                    <option value="context_switch">context_switch</option>
-                    <option value="mouse_activity">mouse_activity</option>
-                    <option value="keyboard_activity">keyboard_activity</option>
-                    <option value="page_visibility">page_visibility</option>
-                    <option value="page_dwell_summary">page_dwell_summary</option>
-                    <option value="face_presence">face_presence</option>
-                    <option value="face_absence">face_absence</option>
-                    <option value="multiple_faces_detected">multiple_faces_detected</option>
-                    <option value="camera_monitor_summary">camera_monitor_summary</option>
-                    <option value="quiz_submitted">quiz_submitted</option>
-                    <option value="session_completed">session_completed</option>
-                  </select>
-                </label>
-                <label>
-                  <span>事件時間</span>
-                  <input id="event-timestamp" type="datetime-local" />
-                </label>
-              </div>
-              <label>
-                <span>metadata JSON</span>
-                <textarea id="event-metadata" rows="5" placeholder='{"quiz_seconds":4,"quiz_score":0}'></textarea>
-              </label>
-              <div class="form-actions">
-                <button type="submit" class="primary-button">送出 Event</button>
-                <span id="event-status" class="muted"></span>
-              </div>
-            </form>
-          </section>
+          <div id="session-detail-content" class="session-detail-content"></div>
         </div>
       </section>
 
@@ -266,7 +93,6 @@
               <p class="eyebrow">Risk Inbox</p>
               <h2>異常事件列表</h2>
             </div>
-            <button id="refresh-button" class="ghost-button">重新整理</button>
           </div>
 
           <div class="filters">
@@ -346,15 +172,19 @@
               <form id="resolution-form" class="resolution-form">
                 <div class="form-grid">
                   <label>
-                    <span>主管 ID</span>
-                    <input id="manager-id" value="M208" required />
+                    <span>審核主管</span>
+                    <select id="manager-id" required>
+                      <option value="M208">M208｜李宜蓁｜合規管理處</option>
+                      <option value="M110">M110｜蔡佩珊｜分行管理處</option>
+                      <option value="M336">M336｜王建銘｜教育訓練處</option>
+                    </select>
                   </label>
                   <label>
                     <span>處理動作</span>
                     <select id="resolution-action">
-                      <option value="approved">核准</option>
+                      <option value="approved">誤判核准</option>
                       <option value="voided">作廢重修</option>
-                      <option value="escalated_to_hr">升級 HR</option>
+                      <option value="escalated_to_hr">通報 HR</option>
                     </select>
                   </label>
                 </div>
@@ -376,6 +206,20 @@
                   <h3>歷史稽核紀錄</h3>
                 </div>
               </div>
+              <div class="audit-filter-bar">
+                <label>
+                  <span>審核主管</span>
+                  <select id="audit-manager-filter">
+                    <option value="">全部主管</option>
+                  </select>
+                </label>
+                <label>
+                  <span>業務員</span>
+                  <select id="audit-agent-filter">
+                    <option value="">全部業務員</option>
+                  </select>
+                </label>
+              </div>
               <div id="audit-list" class="audit-list"></div>
             </section>
           </div>
@@ -383,6 +227,6 @@
       </section>
     </div>
 
-    <script src="./app.js" defer></script>
+    <script src="./app.js?v=20260421-streak-zh" defer></script>
   </body>
 </html>

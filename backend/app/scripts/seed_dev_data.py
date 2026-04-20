@@ -59,18 +59,16 @@ def _cleanup_existing_demo_data(db) -> None:
     db.execute(
         text(
             """
-            DELETE FROM compliance_audit_log
-            WHERE flag_id = ANY(CAST(:flag_ids AS uuid[]))
-            """
-        ),
-        {"flag_ids": list(flag_ids)},
-    )
-    db.execute(
-        text(
-            """
             DELETE FROM flagged_sessions
-            WHERE flag_id = ANY(CAST(:flag_ids AS uuid[]))
-               OR session_id = ANY(CAST(:session_ids AS uuid[]))
+            WHERE (
+                flag_id = ANY(CAST(:flag_ids AS uuid[]))
+                OR session_id = ANY(CAST(:session_ids AS uuid[]))
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM compliance_audit_log cal
+                WHERE cal.flag_id = flagged_sessions.flag_id
+              )
             """
         ),
         {"flag_ids": list(flag_ids), "session_ids": list(session_ids)},
@@ -80,6 +78,12 @@ def _cleanup_existing_demo_data(db) -> None:
             """
             DELETE FROM session_events
             WHERE session_id = ANY(CAST(:session_ids AS uuid[]))
+              AND NOT EXISTS (
+                SELECT 1
+                FROM compliance_audit_log cal
+                JOIN flagged_sessions fs ON fs.flag_id = cal.flag_id
+                WHERE fs.session_id = session_events.session_id
+              )
             """
         ),
         {"session_ids": list(session_ids)},
@@ -89,6 +93,12 @@ def _cleanup_existing_demo_data(db) -> None:
             """
             DELETE FROM learning_sessions
             WHERE session_id = ANY(CAST(:session_ids AS uuid[]))
+              AND NOT EXISTS (
+                SELECT 1
+                FROM compliance_audit_log cal
+                JOIN flagged_sessions fs ON fs.flag_id = cal.flag_id
+                WHERE fs.session_id = learning_sessions.session_id
+              )
             """
         ),
         {"session_ids": list(session_ids)},
@@ -111,11 +121,14 @@ def _insert_learning_sessions(db, now: datetime) -> None:
               context_switch_count,
               cards_swiped,
               leaderboard_points,
-              streak_shield_locked
+              weekly_reward_points,
+              streak_shield_locked,
+              module_completion_frozen
             ) VALUES
-              (:speed_run_session, 'A1028', 'COURSE-AML-101', :speed_run_start, :speed_run_end, 12, 3, 100, 2, 5, 0, TRUE),
-              (:blind_guess_session, 'A2041', 'COURSE-INV-230', :blind_guess_start, :blind_guess_end, 415, 4, 0, 1, 8, 10, FALSE),
-              (:context_switch_session, 'A3350', 'COURSE-CROSS-120', :context_switch_start, :context_switch_end, 450, 38, 80, 7, 9, 0, TRUE)
+              (:speed_run_session, 'A1028', 'COURSE-AML-101', :speed_run_start, :speed_run_end, 12, 3, 100, 2, 5, 0, 0, TRUE, TRUE),
+              (:blind_guess_session, 'A2041', 'COURSE-INV-230', :blind_guess_start, :blind_guess_end, 415, 4, 0, 1, 8, 100, 10, FALSE, FALSE),
+              (:context_switch_session, 'A3350', 'COURSE-CROSS-120', :context_switch_start, :context_switch_end, 450, 38, 80, 7, 9, 0, 0, TRUE, TRUE)
+            ON CONFLICT (session_id) DO NOTHING
             """
         ),
         {
@@ -283,6 +296,7 @@ def _insert_session_events(db, now: datetime) -> None:
                   :event_timestamp,
                   CAST(:metadata_json AS jsonb)
                 )
+                ON CONFLICT (event_id) DO NOTHING
                 """
             ),
             row,
@@ -303,7 +317,8 @@ def _insert_flagged_sessions(db, now: datetime, rule_map: dict) -> None:
               severity_level,
               risk_reason,
               leaderboard_points_revoked,
-              streak_shield_locked
+              streak_shield_locked,
+              module_completion_frozen
             ) VALUES
               (
                 :speed_run_flag,
@@ -314,6 +329,7 @@ def _insert_flagged_sessions(db, now: datetime, rule_map: dict) -> None:
                 'pending',
                 :speed_severity,
                 '12 秒完成 7 分鐘課程，疑似不可能的完成速度。',
+                TRUE,
                 TRUE,
                 TRUE
               ),
@@ -327,6 +343,7 @@ def _insert_flagged_sessions(db, now: datetime, rule_map: dict) -> None:
                 :blind_severity,
                 '4 秒完成測驗且得分為 0，疑似盲猜略過作答。',
                 FALSE,
+                FALSE,
                 FALSE
               ),
               (
@@ -339,8 +356,10 @@ def _insert_flagged_sessions(db, now: datetime, rule_map: dict) -> None:
                 :switch_severity,
                 '7 分鐘內切換視窗 7 次，超過規則門檻。',
                 TRUE,
+                TRUE,
                 TRUE
               )
+            ON CONFLICT (flag_id) DO NOTHING
             """
         ),
         {
@@ -382,6 +401,7 @@ def _insert_audit_logs(db, now: datetime) -> None:
               '經主管複核，此案例為測驗頁面延遲造成的誤判，先解除鎖定並保留紀錄。',
               :created_at
             )
+            ON CONFLICT (audit_id) DO NOTHING
             """
         ),
         {

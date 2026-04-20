@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Anti-Gaming Learner Simulator</title>
     <link rel="stylesheet" href="./styles.css" />
-    <link rel="stylesheet" href="./learner.css" />
+    <link rel="stylesheet" href="./learner.css?v=20260421-streak-zh" />
   </head>
   <body>
     <div class="page-shell learner-shell">
@@ -20,8 +20,6 @@
         </div>
         <div class="learner-actions">
           <span id="learner-health" class="status-pill status-warn">檢查中</span>
-          <a class="ghost-button link-button" href="./index.html">回主管儀表板</a>
-          <a class="ghost-button link-button" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">API Docs</a>
         </div>
       </header>
 
@@ -42,6 +40,13 @@
                 <option value="A1028">A1028｜陳冠宇</option>
                 <option value="A2041">A2041｜林怡君</option>
                 <option value="A3350">A3350｜黃品蓉</option>
+                <option value="A4167">A4167｜張雅婷</option>
+                <option value="A5290">A5290｜王柏翰</option>
+                <option value="A6132">A6132｜劉家豪</option>
+                <option value="A7245">A7245｜蔡宜庭</option>
+                <option value="A8361">A8361｜吳承恩</option>
+                <option value="A9473">A9473｜郭怡萱</option>
+                <option value="A0586">A0586｜鄭宇翔</option>
               </select>
             </label>
             <label>
@@ -53,6 +58,11 @@
               </select>
             </label>
             <button id="start-session-button" class="primary-button" type="button">開始學習 Session</button>
+          </div>
+
+          <div id="learner-feedback" class="empty-state learner-feedback">
+            <h3>準備開始</h3>
+            <p>請先開始 Session。</p>
           </div>
 
           <section class="learner-card-stack" id="lesson-cards"></section>
@@ -71,18 +81,38 @@
           </section>
         </main>
 
-        <aside class="panel learner-side">
-          <p class="eyebrow">Live Evidence</p>
-          <h2>事件與結果</h2>
-          <div class="current-session">
-            <span class="muted">目前 Session ID</span>
-            <strong id="learner-session-id">尚未建立</strong>
+        <aside class="panel learner-scoreboard">
+          <p class="eyebrow">Leaderboard</p>
+          <h2>排行榜與積分</h2>
+          <section class="learner-reward-panel" aria-label="目前學員積分與獎懲狀態">
+            <article class="reward-card">
+              <span>累積排行榜積分</span>
+              <strong id="leaderboard-points">0</strong>
+              <p>正常完成課程與測驗，每次可累積 100 分。</p>
+            </article>
+            <article class="reward-card">
+              <span>累積本週獎勵</span>
+              <strong id="weekly-reward-points">0</strong>
+              <p>每週學習與複習，每次可累積 10 分。</p>
+            </article>
+            <article class="reward-card">
+              <span>連續學習保護</span>
+              <strong id="streak-shield-status">未鎖定</strong>
+              <p>僅高風險會暫時鎖定，主管核准後解鎖。</p>
+            </article>
+            <article class="reward-card">
+              <span>模組完成資格</span>
+              <strong id="module-completion-status">正常</strong>
+              <p>高風險會凍結完成資格。</p>
+            </article>
+          </section>
+          <div class="leaderboard-list-head">
+            <h3>業務積分排行</h3>
+            <span class="muted">含其他業務</span>
           </div>
-          <div id="learner-feedback" class="empty-state">
-            <h3>準備開始</h3>
-            <p>請先開始 Session。</p>
+          <div id="leaderboard-list" class="leaderboard-list">
+            <p class="muted">排行榜載入中。</p>
           </div>
-          <div id="event-log" class="event-log"></div>
         </aside>
       </section>
     </div>
@@ -92,10 +122,10 @@
         <p class="eyebrow">Quiz Complete</p>
         <h2 id="completion-modal-title">已完成測驗</h2>
         <p>你的測驗已成功送出，系統也已完成本次 Session 紀錄。</p>
-        <button id="completion-confirm-button" class="primary-button" type="button">確認</button>
+        <button id="completion-confirm-button" class="primary-button" type="button">查看更新後排行榜</button>
       </div>
     </div>
 
-    <script src="./learner.js"></script>
+    <script src="./learner.js?v=20260421-streak-zh"></script>
   </body>
 </html>

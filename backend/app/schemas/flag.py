@@ -45,6 +45,9 @@ class AuditLogEntry(BaseModel):
     action_taken: ResolutionStatus
     manager_justification_notes: str
     created_at: str
+    agent_name: str | None = None
+    course_name: str | None = None
+    rule_code: str | None = None
 
 
 class RuleSnapshot(BaseModel):
@@ -66,7 +69,9 @@ class SessionSnapshot(BaseModel):
     context_switch_count: int
     cards_swiped: int
     leaderboard_points: int
+    weekly_reward_points: int
     streak_shield_locked: bool
+    module_completion_frozen: bool
 
 
 class FlagDetail(BaseModel):

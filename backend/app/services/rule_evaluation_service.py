@@ -5,6 +5,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 
+BASE_MODULE_POINTS = 100
+WEEKLY_REVIEW_REWARD_POINTS = 10
+
+
 class RuleEvaluationService:
     def evaluate_session(self, db: Session, session_id: str) -> list[dict]:
         session_row = db.execute(
@@ -48,7 +52,11 @@ class RuleEvaluationService:
                 """
             )
         ).mappings().all()
-        event_metrics = self._load_event_metrics(db=db, session_id=session_id)
+        event_metrics = self._load_event_metrics(
+            db=db,
+            session_id=session_id,
+            session_started_at=session_row["started_at"],
+        )
 
         created_flags: list[dict] = []
         for rule in rules:
@@ -77,7 +85,10 @@ class RuleEvaluationService:
             if already_flagged is not None:
                 continue
 
-            is_high_risk = rule["severity_level"] == "high"
+            severity_level = rule["severity_level"]
+            pauses_leaderboard_points = severity_level in {"medium", "high"}
+            locks_streak_shield = severity_level == "high"
+            freezes_module_completion = severity_level == "high"
             flag_id = str(uuid4())
             db.execute(
                 text(
@@ -92,7 +103,8 @@ class RuleEvaluationService:
                       severity_level,
                       risk_reason,
                       leaderboard_points_revoked,
-                      streak_shield_locked
+                      streak_shield_locked,
+                      module_completion_frozen
                     ) VALUES (
                       :flag_id,
                       :session_id,
@@ -103,7 +115,8 @@ class RuleEvaluationService:
                       :severity_level,
                       :risk_reason,
                       :leaderboard_points_revoked,
-                      :streak_shield_locked
+                      :streak_shield_locked,
+                      :module_completion_frozen
                     )
                     """
                 ),
@@ -113,24 +126,31 @@ class RuleEvaluationService:
                     "agent_id": session_row["agent_id"],
                     "rule_violated_id": rule["rule_id"],
                     "flag_timestamp": datetime.now(timezone.utc),
-                    "severity_level": rule["severity_level"],
+                    "severity_level": severity_level,
                     "risk_reason": decision["risk_reason"],
-                    "leaderboard_points_revoked": is_high_risk,
-                    "streak_shield_locked": is_high_risk,
+                    "leaderboard_points_revoked": pauses_leaderboard_points,
+                    "streak_shield_locked": locks_streak_shield,
+                    "module_completion_frozen": freezes_module_completion,
                 },
             )
 
-            if is_high_risk:
+            if pauses_leaderboard_points:
                 db.execute(
                     text(
                         """
                         UPDATE learning_sessions
                         SET leaderboard_points = 0,
-                            streak_shield_locked = TRUE
+                            weekly_reward_points = 0,
+                            streak_shield_locked = streak_shield_locked OR :streak_shield_locked,
+                            module_completion_frozen = module_completion_frozen OR :module_completion_frozen
                         WHERE session_id = :session_id
                         """
                     ),
-                    {"session_id": session_id},
+                    {
+                        "session_id": session_id,
+                        "streak_shield_locked": locks_streak_shield,
+                        "module_completion_frozen": freezes_module_completion,
+                    },
                 )
 
             created_flags.append(
@@ -142,7 +162,46 @@ class RuleEvaluationService:
                 }
             )
 
+        self._sync_session_penalties(db=db, session_id=session_id)
         return created_flags
+
+    @staticmethod
+    def _sync_session_penalties(db: Session, session_id: str) -> None:
+        active_penalty = db.execute(
+            text(
+                """
+                SELECT
+                  BOOL_OR(resolution_status != 'approved') AS has_unapproved_flag,
+                  BOOL_OR(resolution_status != 'approved' AND severity_level = 'high') AS has_unapproved_high_flag
+                FROM flagged_sessions
+                WHERE session_id = :session_id
+                """
+            ),
+            {"session_id": session_id},
+        ).mappings().one()
+        has_unapproved_flag = bool(active_penalty["has_unapproved_flag"])
+        has_unapproved_high_flag = bool(active_penalty["has_unapproved_high_flag"])
+
+        if not has_unapproved_flag:
+            return
+
+        db.execute(
+            text(
+                """
+                UPDATE learning_sessions
+                SET leaderboard_points = 0,
+                    weekly_reward_points = 0,
+                    streak_shield_locked = :streak_shield_locked,
+                    module_completion_frozen = :module_completion_frozen
+                WHERE session_id = :session_id
+                """
+            ),
+            {
+                "session_id": session_id,
+                "streak_shield_locked": has_unapproved_high_flag,
+                "module_completion_frozen": has_unapproved_high_flag,
+            },
+        )
 
     @staticmethod
     def _evaluate_rule(rule: dict, session_row: dict, event_metrics: dict) -> dict | None:
@@ -152,15 +211,27 @@ class RuleEvaluationService:
         if rule_code == "IMPOSSIBLE_SPEED":
             duration_seconds = session_row["duration_seconds"]
             expected_duration_seconds = session_row["expected_duration_seconds"]
-            if duration_seconds is None or expected_duration_seconds is None:
+            quiz_seconds = session_row["quiz_seconds"]
+            wrong_count = event_metrics["wrong_count"]
+            if duration_seconds is None:
                 return None
             threshold_ratio = float(params.get("min_course_average_ratio", 0.2))
-            threshold_seconds = expected_duration_seconds * threshold_ratio
-            if duration_seconds < threshold_seconds:
+            threshold_seconds = int(params.get("max_duration_seconds", 30))
+            max_wrong_count = int(params.get("max_wrong_count", 5))
+            if expected_duration_seconds is not None:
+                threshold_seconds = min(
+                    threshold_seconds,
+                    int(expected_duration_seconds * threshold_ratio),
+                )
+            is_fast_completion = duration_seconds <= threshold_seconds or (
+                quiz_seconds is not None and quiz_seconds <= threshold_seconds
+            )
+            if is_fast_completion and wrong_count <= max_wrong_count:
                 return {
                     "risk_reason": (
-                        f"完成時間 {duration_seconds} 秒，低於課程平均時間 "
-                        f"{expected_duration_seconds} 秒的 {int(threshold_ratio * 100)}%。"
+                        f"完成時間 {duration_seconds} 秒，測驗作答 {quiz_seconds} 秒，"
+                        f"答錯 {wrong_count} 題，符合異常速度門檻："
+                        f"{threshold_seconds} 秒內完成/交卷且答錯不超過 {max_wrong_count} 題。"
                     )
                 }
             return None
@@ -168,14 +239,15 @@ class RuleEvaluationService:
         if rule_code == "BLIND_GUESSING":
             quiz_seconds = session_row["quiz_seconds"]
             quiz_score = session_row["quiz_score"]
+            wrong_count = event_metrics["wrong_count"]
             if quiz_seconds is None or quiz_score is None:
                 return None
-            max_quiz_seconds = int(params.get("max_quiz_seconds", 5))
-            expected_score = int(params.get("score_equals", 0))
-            if quiz_seconds <= max_quiz_seconds and quiz_score == expected_score:
+            max_quiz_seconds = int(params.get("max_quiz_seconds", 30))
+            min_wrong_count = int(params.get("min_wrong_count", 9))
+            if quiz_seconds <= max_quiz_seconds and wrong_count >= min_wrong_count:
                 return {
                     "risk_reason": (
-                        f"測驗於 {quiz_seconds} 秒內完成且得分為 {quiz_score}，"
+                        f"測驗於 {quiz_seconds} 秒內完成，答錯 {wrong_count} 題，"
                         "疑似盲猜或略過作答。"
                     )
                 }
@@ -196,8 +268,8 @@ class RuleEvaluationService:
         if rule_code == "REPEATED_ANSWER_CHANGES":
             question_change_counts = event_metrics["question_change_counts"]
             total_answer_changes = event_metrics["total_answer_changes"]
-            max_changes_per_question = int(params.get("max_changes_per_question", 3))
-            min_total_changes = int(params.get("min_total_changes", 5))
+            max_changes_per_question = int(params.get("max_changes_per_question", 10))
+            min_total_changes = int(params.get("min_total_changes", 999999))
 
             repeated_question = next(
                 (
@@ -212,7 +284,7 @@ class RuleEvaluationService:
                 return {
                     "risk_reason": (
                         f"題目 {question_id} 在單次測驗中被改答 {change_count} 次，"
-                        f"超過門檻 {max_changes_per_question} 次。"
+                        f"達到門檻 {max_changes_per_question} 次。"
                     )
                 }
 
@@ -229,6 +301,29 @@ class RuleEvaluationService:
             duration_seconds = session_row["duration_seconds"] or 0
             if duration_seconds <= 0:
                 return None
+            min_duration_seconds = int(params.get("min_duration_seconds", 600))
+            if duration_seconds < min_duration_seconds:
+                return None
+
+            has_answer_activity = event_metrics["has_answer_activity"]
+            if not has_answer_activity:
+                return {
+                    "risk_reason": (
+                        f"Session 停留 {duration_seconds} 秒仍沒有答題紀錄，"
+                        f"超過低互動掛機門檻 {min_duration_seconds} 秒。"
+                    )
+                }
+            first_answer_delay_seconds = event_metrics["first_answer_delay_seconds"]
+            if (
+                first_answer_delay_seconds is not None
+                and first_answer_delay_seconds >= min_duration_seconds
+            ):
+                return {
+                    "risk_reason": (
+                        f"Session 開始後 {first_answer_delay_seconds} 秒才出現首題作答，"
+                        f"達到低互動掛機門檻 {min_duration_seconds} 秒。"
+                    )
+                }
 
             total_active_ms = (
                 event_metrics["mouse_active_milliseconds"]
@@ -255,15 +350,16 @@ class RuleEvaluationService:
 
         if rule_code == "LOW_PAGE_FOCUS_RATIO":
             duration_seconds = session_row["duration_seconds"] or 0
+            context_switch_count = session_row["context_switch_count"] or 0
             if duration_seconds <= 0:
                 return None
 
             focused_seconds = event_metrics["focused_seconds"]
             hidden_seconds = event_metrics["hidden_seconds"]
-            hidden_count = event_metrics["hidden_count"]
+            hidden_count = max(event_metrics["hidden_count"], context_switch_count)
             focus_ratio = focused_seconds / duration_seconds if focused_seconds > 0 else 0
             min_focus_ratio = float(params.get("min_focus_ratio", 0.6))
-            max_hidden_count = int(params.get("max_hidden_count", 3))
+            max_hidden_count = int(params.get("max_hidden_count", 5))
 
             if focus_ratio < min_focus_ratio or hidden_count > max_hidden_count:
                 return {
@@ -317,7 +413,7 @@ class RuleEvaluationService:
         return None
 
     @staticmethod
-    def _load_event_metrics(db: Session, session_id: str) -> dict:
+    def _load_event_metrics(db: Session, session_id: str, session_started_at: datetime) -> dict:
         rows = db.execute(
             text(
                 """
@@ -345,6 +441,9 @@ class RuleEvaluationService:
             "focused_seconds": 0,
             "hidden_seconds": 0,
             "hidden_count": 0,
+            "wrong_count": 0,
+            "has_answer_activity": False,
+            "first_answer_delay_seconds": None,
             "face_present_seconds": 0,
             "face_absent_seconds": 0,
             "longest_face_absence_seconds": 0,
@@ -364,6 +463,71 @@ class RuleEvaluationService:
                         metrics["question_change_counts"].get(question_id, 0) + 1
                     )
                     metrics["total_answer_changes"] += 1
+
+            elif event_type in {"quiz_submitted", "session_completed"}:
+                answer_change_count = int(metadata.get("answer_change_count", 0) or 0)
+                metrics["total_answer_changes"] = max(
+                    metrics["total_answer_changes"],
+                    answer_change_count,
+                )
+                for question_id, change_count in (
+                    metadata.get("answer_change_counts_by_question") or {}
+                ).items():
+                    if isinstance(question_id, str):
+                        metrics["question_change_counts"][question_id] = max(
+                            metrics["question_change_counts"].get(question_id, 0),
+                            int(change_count or 0),
+                        )
+
+                metrics["focused_seconds"] = max(
+                    metrics["focused_seconds"],
+                    int(metadata.get("focused_seconds", 0) or 0),
+                )
+                metrics["hidden_seconds"] = max(
+                    metrics["hidden_seconds"],
+                    int(metadata.get("hidden_seconds", 0) or 0),
+                )
+                metrics["hidden_count"] = max(
+                    metrics["hidden_count"],
+                    int(metadata.get("hidden_count", 0) or 0),
+                )
+                metrics["wrong_count"] = max(
+                    metrics["wrong_count"],
+                    int(metadata.get("wrong_count", 0) or 0),
+                )
+                metrics["has_answer_activity"] = metrics["has_answer_activity"] or bool(
+                    metadata.get("has_answer_activity")
+                )
+                first_answer_at = RuleEvaluationService._parse_metadata_datetime(
+                    metadata.get("first_answer_at")
+                )
+                if first_answer_at is not None:
+                    delay_seconds = max(
+                        0,
+                        int((first_answer_at - session_started_at).total_seconds()),
+                    )
+                    current_delay = metrics["first_answer_delay_seconds"]
+                    metrics["first_answer_delay_seconds"] = (
+                        delay_seconds
+                        if current_delay is None
+                        else min(current_delay, delay_seconds)
+                    )
+                metrics["mouse_move_count"] = max(
+                    metrics["mouse_move_count"],
+                    int(metadata.get("mouse_move_count", 0) or 0),
+                )
+                metrics["mouse_click_count"] = max(
+                    metrics["mouse_click_count"],
+                    int(metadata.get("mouse_click_count", 0) or 0),
+                )
+                metrics["mouse_scroll_count"] = max(
+                    metrics["mouse_scroll_count"],
+                    int(metadata.get("mouse_scroll_count", 0) or 0),
+                )
+                metrics["keyboard_keydown_count"] = max(
+                    metrics["keyboard_keydown_count"],
+                    int(metadata.get("keyboard_keydown_count", 0) or 0),
+                )
 
             elif event_type == "mouse_activity":
                 metrics["mouse_move_count"] += int(metadata.get("move_count", 0))
@@ -397,3 +561,12 @@ class RuleEvaluationService:
                 )
 
         return metrics
+
+    @staticmethod
+    def _parse_metadata_datetime(value) -> datetime | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None

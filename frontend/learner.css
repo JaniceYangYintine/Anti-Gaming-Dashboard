@@ -32,7 +32,7 @@
 }
 
 .learner-actions {
-  grid-template-columns: repeat(3, max-content);
+  grid-template-columns: max-content;
   align-items: center;
 }
 
@@ -43,12 +43,13 @@
 }
 
 .learner-layout {
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   margin-top: 18px;
+  align-items: start;
 }
 
 .learner-main,
-.learner-side {
+.learner-scoreboard {
   min-height: 520px;
 }
 
@@ -56,6 +57,109 @@
   grid-template-columns: 1fr 1fr auto;
   align-items: end;
   margin: 18px 0;
+}
+
+.learner-reward-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.reward-card {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 16px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(247, 235, 215, 0.72)),
+    radial-gradient(circle at top right, rgba(39, 115, 95, 0.12), transparent 34%);
+}
+
+.reward-card span,
+.reward-card strong,
+.reward-card p {
+  display: block;
+}
+
+.reward-card span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.reward-card strong {
+  margin-top: 8px;
+  font-size: 1.55rem;
+}
+
+.reward-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.learner-feedback {
+  margin-bottom: 18px;
+}
+
+.learner-scoreboard {
+  position: sticky;
+  top: 18px;
+}
+
+.learner-scoreboard h2,
+.leaderboard-list-head h3 {
+  margin: 0;
+}
+
+.leaderboard-list-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: end;
+  margin: 20px 0 12px;
+}
+
+.leaderboard-list {
+  display: grid;
+  gap: 10px;
+}
+
+.leaderboard-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.leaderboard-item.is-current {
+  border-color: rgba(34, 121, 83, 0.42);
+  background:
+    linear-gradient(135deg, rgba(40, 153, 104, 0.14), rgba(255, 255, 255, 0.78)),
+    radial-gradient(circle at top right, rgba(231, 196, 111, 0.22), transparent 42%);
+}
+
+.leaderboard-rank {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: rgba(28, 24, 20, 0.08);
+  font-weight: 800;
+}
+
+.leaderboard-item p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.leaderboard-points {
+  font-size: 1.4rem;
 }
 
 .lesson-card {
@@ -204,6 +308,10 @@
   .learner-layout,
   .learner-controls {
     grid-template-columns: 1fr;
+  }
+
+  .learner-scoreboard {
+    position: static;
   }
 
   .learner-actions {

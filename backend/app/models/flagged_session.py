@@ -46,3 +46,4 @@ class FlaggedSession(Base):
     risk_reason: Mapped[str] = mapped_column(Text, nullable=False)
     leaderboard_points_revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     streak_shield_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    module_completion_frozen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

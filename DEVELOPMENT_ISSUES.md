@@ -13,19 +13,7 @@
 - 從零開始重建 FastAPI 專案骨架、設定檔、資料庫連線與 models
 - 依照里程碑逐步補 route、schema、service，而不是一次全部接回
 
-## 2. 本機環境沒有 Docker
-### 問題
-執行 `docker --version` 時回傳 `command not found`。
-
-### 影響
-- 無法在目前環境直接用 Docker Compose 做端到端啟動驗證
-
-### 解法
-- 先補齊 [docker-compose.yml](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/docker-compose.yml) 與 [backend/Dockerfile](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/backend/Dockerfile)
-- 讓專案在有 Docker 的環境時可以直接啟動
-- 當前環境則先以靜態檢查與結構正確性為主
-
-## 3. backend 一開始同時存在 mock 思維與真 DB 思維
+## 2. backend 一開始同時存在 mock 思維與真 DB 思維
 ### 問題
 在開發初期，後端曾出現部分流程偏向 mock data、部分流程走 PostgreSQL 的過渡狀態。
 
@@ -38,7 +26,7 @@
 - 明確以 PostgreSQL 為單一資料來源
 - 讓 `rules`、`flags`、`session-events`、`resolution` 都建立在 DB flow 上
 
-## 4. session lifecycle 一開始不完整
+## 3. session lifecycle 一開始不完整
 ### 問題
 若只有 `session-events`，但沒有 `session` 建立 API，前端與測試流程會缺少起點。
 
@@ -49,7 +37,7 @@
 - 新增 `POST /api/v1/sessions`
 - 讓整條資料流從 session 建立開始，後續 event、flag、resolution 才有穩定入口
 
-## 5. 規則引擎若太早觸發，容易用到不完整資料
+## 4. 規則引擎若太早觸發，容易用到不完整資料
 ### 問題
 如果每來一筆事件就立即做規則判斷，可能在 quiz score、duration、切換次數尚未完整時就過早產生 flag。
 
@@ -62,13 +50,13 @@
 - 在此之前先把 `quiz_submitted`、`context_switch`、`card_swiped` 等事件同步回 `learning_sessions`
 - 等 session 結束後再一次性做 rule evaluation
 
-## 6. 目前採取的整體策略
+## 5. 目前採取的整體策略
 ### 策略
 - 一次只做一個清楚的步驟
 - 每完成一段就更新摘要文檔
 - 遇到問題時記錄問題、影響與解法，避免未來重複踩雷
 
-## 7. session-events 若缺少最基本驗證，容易讓資料被寫壞
+## 6. session-events 若缺少最基本驗證，容易讓資料被寫壞
 ### 問題
 在目前流程下，前端可以直接送 `quiz_submitted`、`session_completed` 等事件；如果沒有檢查 metadata 或事件時間，資料庫可能被寫入不合理內容。
 
@@ -84,7 +72,7 @@
   - 已完成 session 不可重複送事件
   - `session_completed` 不可重複完成
 
-## 8. resolution 流程若只更新狀態，會缺少商業規則保護
+## 7. resolution 流程若只更新狀態，會缺少商業規則保護
 ### 問題
 如果 `resolution` 只做資料更新，主管可能用過度簡略的說明直接核准異常事件，降低稽核可信度。
 
@@ -99,7 +87,7 @@
   - `approved` 需提供更具體說明
   - `approved` 會同步解鎖 `learning_sessions.streak_shield_locked`
 
-## 9. session event 成功送出後，前端仍看不出是否真的產生新 flag
+## 8. session event 成功送出後，前端仍看不出是否真的產生新 flag
 ### 問題
 原本 `POST /api/v1/session-events` 只回傳事件本身，前端即使成功送出 `session_completed`，也只能再手動刷新 Risk Inbox，無法立即知道規則引擎是否命中。
 
@@ -114,7 +102,7 @@
 - 前端收到 response 後，直接顯示新增風險事件摘要
 - 若有新 flag，自動切到該筆 detail，讓驗證流程更清楚
 
-## 10. 單純檢查欄位存在還不夠，事件順序錯亂仍會破壞 session 邏輯
+## 9. 單純檢查欄位存在還不夠，事件順序錯亂仍會破壞 session 邏輯
 ### 問題
 即使 `session-events` 已經檢查基本欄位，如果後送的事件時間早於先前事件，或 `card_swiped`、`context_switch` 缺少必要 metadata，系統仍可能累積不一致資料。
 
@@ -130,7 +118,7 @@
 - 為 `context_switch` 補 `target` / `source` 非空字串驗證
 - 為 `session_started` 的 `source` 補基本字串驗證
 
-## 11. 示範資料若每次隨機生成，demo 與除錯會難以重現
+## 10. 示範資料若每次隨機生成，demo 與除錯會難以重現
 ### 問題
 原本 seed script 每次都產生新的 UUID 與時間，雖然能塞資料，但不利於反覆 demo、對照畫面、或追查某筆固定案例。
 
@@ -145,23 +133,9 @@
 - 每次匯入前先清掉既有 demo 資料，再重建資料
 - 補上 README 中的建議 demo 流程，讓展示與驗證步驟一致
 
-## 12. Demo 若完全依賴手動操作，交件展示容易失誤
+## 11. backend 尚未啟動時，前端容易只剩「無法連線」而缺少引導
 ### 問題
-雖然前端已能手動建立 session、送 event、查看 flag，但在短時間 demo 內，手動連續輸入多筆事件仍容易出錯，特別是時間序與 metadata。
-
-### 影響
-- 交件展示時操作壓力高
-- 一旦輸入錯誤，會打斷 demo 節奏
-- 不利於快速切換三種典型案例
-
-### 解法
-- 在前端加入 `Demo Scenarios` 一鍵模擬按鈕
-- 每個 scenario 都走既有 backend API，不繞過主流程
-- 模擬完成後自動刷新 Risk Inbox，並切到新產生的 flag
-
-## 13. backend 尚未啟動時，前端容易只剩「無法連線」而缺少引導
-### 問題
-目前這台環境還沒裝 FastAPI 依賴與 PostgreSQL，如果前端只顯示連線失敗，使用者很難立刻知道缺的是 backend、database，還是啟動順序。
+開發初期本機尚未裝好 FastAPI 依賴與 PostgreSQL，如果前端只顯示連線失敗，使用者很難立刻知道缺的是 backend、database，還是啟動順序。
 
 ### 影響
 - 初次打開頁面時容易誤以為畫面壞掉
@@ -172,9 +146,9 @@
 - 在前端新增 `System Readiness` 區塊
 - 根據 `/health` 的回應顯示 backend / database 連線狀態
 - Risk Inbox 與 Flag Detail 在未連線時顯示具體引導文案
-- 新增 [LOCAL_RUNBOOK.md](/Users/yintinemacbookair/Desktop/Anti-Gaming%20project/LOCAL_RUNBOOK.md) 集中整理本機啟動流程
+- 新增 [LOCAL_RUNBOOK.md](/Users/yintinemacbookair/Desktop/凱基mini project/repo/LOCAL_RUNBOOK.md) 集中整理本機啟動流程
 
-## 14. backend 依賴在 Python 3.14 上安裝不穩，需改用 Python 3.13
+## 12. backend 依賴在 Python 3.14 上安裝不穩，需改用 Python 3.13
 ### 問題
 這台機器的 `python3` 預設是 `3.14`。實際安裝 backend 依賴時，`.venv` 雖然建立成功，但 `fastapi` 等套件沒有正確安裝進去。
 
@@ -189,7 +163,7 @@
 - 重新安裝 `requirements.txt`
 - 目前已確認 backend 可啟動，`/health` 可回傳 `status: ok`
 
-## 15. Homebrew 安裝的 PostgreSQL 預設角色不是 `postgres`
+## 13. Homebrew 安裝的 PostgreSQL 預設角色不是 `postgres`
 ### 問題
 專案預設 `.env.example` 使用 `postgres` 角色連線，但 Homebrew 初始化的本機 PostgreSQL 預設是使用 macOS 目前登入帳號作為資料庫角色。
 
@@ -204,20 +178,7 @@
 - 重新啟動 FastAPI
 - 重新執行 `seed_dev_data`
 
-## 16. 端到端驗證已打通，但前端 scenario 還沒做同級別實機驗證
-### 問題
-目前我們已透過 API 完成一輪真正的 `create session -> session events -> generated flag -> resolution` 驗證，但前端的 `Demo Scenarios` 尚未逐一做同級別實機驗證。
-
-### 影響
-- backend 主流程已可確認
-- 但前端 scenario 按鈕的操作體驗還需要再走一次，才能當作交件前最終驗證
-
-### 解法
-- 以目前已啟動的本機環境，逐一點選三個 `Demo Scenarios`
-- 檢查 Risk Inbox 是否即時新增資料
-- 檢查 Flag Detail、Timeline、Resolution Action Bar 是否正確刷新
-
-## 17. 前端 readiness 與 backend health 回傳值一度不一致
+## 14. 前端 readiness 與 backend health 回傳值一度不一致
 ### 問題
 前端原本把 database 成功狀態寫成 `connected`，但 backend `/health` 實際回傳的是 `ok`。
 
@@ -229,7 +190,7 @@
 - 將前端 readiness 判斷改成以 `data.database === "ok"` 為準
 - 順手新增 `已建立案例` 快速切換區，讓 demo 時更容易驗證畫面狀態是否同步
 
-## 18. 想加入更細的反作弊訊號時，原本事件模型不夠用
+## 15. 想加入更細的反作弊訊號時，原本事件模型不夠用
 ### 問題
 原本 `session_events` 只涵蓋 `card_swiped`、`quiz_submitted`、`context_switch` 等較粗粒度事件，無法表達「反覆改答」、「滑鼠鍵盤互動密度」與「頁面有效停留時間」。
 
@@ -250,7 +211,7 @@
   - `LOW_INPUT_ACTIVITY`
   - `LOW_PAGE_FOCUS_RATIO`
 
-## 19. 若直接監聽整個 dashboard，容易把管理面板操作誤記成作弊證據
+## 16. 若直接監聽整個 dashboard，容易把管理面板操作誤記成作弊證據
 ### 問題
 這個 repo 目前前端是風險管理 dashboard，不是實際學習頁面。若直接把所有 `input`、`select`、`textarea` 的變更都記成 `answer_changed`，會把建立 Session、主管審核、篩選器操作也一起寫進證據流。
 
@@ -264,7 +225,7 @@
 - 明確排除 `#session-form`、`#event-form`、`#resolution-form`
 - 將這個接法寫進 README，讓後續真正接學習頁面時有穩定規則
 
-## 20. 自動蒐證若與 demo scenario 同時運作，會汙染示範資料
+## 17. 自動蒐證若與 demo scenario 同時運作，會汙染示範資料
 ### 問題
 前端已經有一鍵 scenario 模擬；若自動監聽在 scenario 期間仍持續送出 `mouse_activity`、`keyboard_activity`、`page_visibility`，demo 資料會混入人工操作噪音。
 
@@ -278,38 +239,7 @@
 - scenario 完成後再恢復一般狀態
 - 讓 demo 仍維持固定案例，真實互動則只在手動建立 Session 時啟動
 
-## 21. 鏡頭偵測若直接上傳影像，隱私風險太高
-### 問題
-鏡頭相關訊號很有展示價值，但若直接錄影、截圖或把影像送到後端分析，會讓隱私、資安與合規風險瞬間升高。
-
-### 影響
-- 使用者接受度大幅下降
-- 在金融/保險訓練情境下，更容易被質疑蒐集過度
-- 專案會從「行為證據留痕」變成「影像監控」，審查門檻完全不同
-
-### 解法
-- 鏡頭只在前端本地分析
-- 不錄影、不截圖、不上傳影像
-- 後端只接收摘要事件：
-  - `face_presence`
-  - `face_absence`
-  - `multiple_faces_detected`
-  - `camera_monitor_summary`
-
-## 22. 鏡頭偵測的最大風險不是程式碼，而是瀏覽器支援度
-### 問題
-目前這版採用瀏覽器內建 `FaceDetector API`，不額外引入第三方模型。這樣雖然輕量，但不是每個瀏覽器都支援。
-
-### 影響
-- 在不支援的瀏覽器上，鏡頭 presence monitor 無法啟用
-- 功能可展示，但不保證所有環境都能直接跑起來
-
-### 解法
-- 前端先檢查 `getUserMedia + FaceDetector` 是否可用
-- 若不支援，就顯示明確狀態，不強行啟用
-- 將鏡頭功能設計為可選配的輔助訊號，而不是唯一判定依據
-
-## 23. Learner Simulator 一開始太像測試工具，不像真實測驗平台
+## 18. Learner Simulator 一開始太像測試工具，不像真實測驗平台
 ### 問題
 第一版 learner simulator 為了快速 demo，曾提供「選擇測試情境」與一鍵按鈕，例如快速通關、盲猜、反覆改答、切頁分心等。這雖然方便展示，但看起來比較像後台測試工具，不像真正給學員使用的測驗平台。
 
@@ -326,7 +256,7 @@
   - 送出測驗時把改答內容與次數寫進 `quiz_submitted.metadata_json`
   - 瀏覽器切到其他分頁時自動送出切頁證據
 
-## 24. Learner Simulator 有 API 對接設計，但 backend 未啟動時會讓人誤以為功能壞掉
+## 19. Learner Simulator 有 API 對接設計，但 backend 未啟動時會讓人誤以為功能壞掉
 ### 問題
 learner 頁面使用 `POST /api/v1/sessions` 建立 session，並用 `POST /api/v1/session-events` 送出學習事件，因此它本身是有和 Anti-Gaming backend 對接的。不過若 `http://127.0.0.1:8000/health` 連不到，所有事件都無法真正寫進資料庫。
 
@@ -340,7 +270,7 @@ learner 頁面使用 `POST /api/v1/sessions` 建立 session，並用 `POST /api/
 - 確認 backend 與 database 啟動後，再進行 learner 實測
 - 文件中明確要求先確認 `/health` 正常，再測改答案紀錄與 `context_switch`
 
-## 25. `answer_changed` 的第一個答案不能直接當成改答事件
+## 20. `answer_changed` 的第一個答案不能直接當成改答事件
 ### 問題
 若學員第一次選擇某題答案時就送 `answer_changed`，後端會要求 `from_answer` 與 `to_answer` 都存在，且兩者不能相同。第一次作答沒有前一個答案，因此不能直接視為「改答」。
 
@@ -354,7 +284,7 @@ learner 頁面使用 `POST /api/v1/sessions` 建立 session，並用 `POST /api/
 - 只有同一題從既有答案切換到另一個答案時，才視為一次改答
 - 若要測 `REPEATED_ANSWER_CHANGES`，需要在同一題連續切換多次答案，例如 A -> B -> C -> A
 
-## 26. FastAPI validation detail 若直接丟進 Error，前端會顯示 `[object Object]`
+## 21. FastAPI validation detail 若直接丟進 Error，前端會顯示 `[object Object]`
 ### 問題
 改答案失敗時，畫面曾顯示 `操作失敗 [object Object]`。原因是 FastAPI 422 validation error 的 `detail` 常是物件或陣列，前端原本直接 `throw new Error(payload.detail)`，瀏覽器會把物件轉成 `[object Object]`。
 
@@ -368,46 +298,152 @@ learner 頁面使用 `POST /api/v1/sessions` 建立 session，並用 `POST /api/
 - 將 FastAPI 的陣列/物件錯誤整理成人可讀字串
 - 同步把 feedback 輸出做 HTML escape，避免錯誤內容被當作 HTML 注入頁面
 
-## 27. learner 送 `page_visibility` 時，現場 backend 版本仍只接受舊 event enum
+## 22. Dashboard Timeline 資訊太雜，主管判讀不直覺
 ### 問題
-切換分頁時，learner 曾送出 `page_visibility`。但現場正在跑的 backend 回傳錯誤：
-`body.event_type: Input should be 'session_started', 'card_swiped', 'quiz_started', 'quiz_submitted', 'context_switch' or 'session_completed'`。
-
-這表示執行中的 backend schema 還是舊版，只接受 `context_switch` 等少數 event type；雖然目前本機程式碼已擴充 `page_visibility` / `page_dwell_summary`，但正在服務請求的 API 尚未同步到最新版本。
+完整事件 Timeline 原本會顯示 `quiz_submitted` 與 `session_completed`。兩者在目前流程中內容高度重複，且 `quiz_submitted` 對主管判讀風險的幫助有限，反而讓 Timeline 顯得冗長。
 
 ### 影響
-- learner 一切頁就被 schema validation 擋下
-- 使用者會看到操作失敗
-- 切頁分心無法進 Timeline，也無法累加 `context_switch_count`
+- 主管需要花更多時間過濾重複事件
+- Demo 時容易被事件名稱與 metadata 干擾重點
+- 「完整事件 Timeline」雖然完整，但不夠適合管理視角判讀
 
 ### 解法
-- 為了讓 demo 穩定，learner 暫時改成在 `visibilitychange` 變成 hidden 時送 `context_switch`
-- metadata 保留 `visibility_state`、`hidden_count` 與 `source`，方便 Timeline 判讀來源
-- learner 不再送 `page_visibility` / `page_dwell_summary`，避免舊 backend enum 擋住
-- 未來若確定 backend 已重啟並支援新 enum，可再把 learner 切回更細的 `page_visibility` / `page_dwell_summary` 模式
+- 在 dashboard 顯示層加入隱藏事件清單
+- 目前 dashboard Timeline 不顯示：
+  - `quiz_submitted`
+  - `session_completed`
+- 後端資料仍完整保留在 `session_events`，只是 dashboard 不呈現，避免破壞稽核資料
 
-## 28. 現場 backend 版本也不接受 `answer_changed`
+## 23. 高風險 session 的凍結狀態在 learner 頁看起來沒有同步
 ### 問題
-修改答案時，learner 原本會送出 `answer_changed`。但現場正在跑的 backend enum 仍回傳：
-`body.event_type: Input should be 'session_started', 'card_swiped', 'quiz_started', 'quiz_submitted', 'context_switch' or 'session_completed'`。
-
-這代表正在執行的 API 不只不接受 `page_visibility`，也尚未接受 `answer_changed`。
+張雅婷 AML 案例在資料庫中已是高風險，且 `streak_shield_locked = true`、`module_completion_frozen = true`。但 learner 測驗平台一開始只根據 leaderboard 或本次剛產生的 flags 估算狀態，沒有讀取後端既有 session 的懲罰欄位。
 
 ### 影響
-- 學員一改答案就會顯示操作失敗
-- 改答內容無法進資料庫
-- 使用者無法從 Timeline 判讀「改了哪題、從什麼答案改成什麼答案、改了幾次」
+- learner 頁看起來像高風險卻沒有凍結
+- 容易誤判為後端懲罰規則失效
+- Dashboard 與 learner 對同一位業務員的狀態呈現不一致
 
 ### 解法
-- learner 暫時不再直接送 `answer_changed`
-- 第一次選答案只記為 baseline
-- 後續同一題切換答案時，前端先累積改答紀錄：
-  - `question_id`
-  - `from_answer`
-  - `to_answer`
-  - `question_change_count`
-  - `total_change_index`
-  - `changed_at`
-- 送出測驗時，將彙整結果寫入 `quiz_submitted.metadata_json`
-- 同步也把摘要放進 `session_completed.metadata_json`，方便在舊 backend enum 下仍能保留改答內容與次數
-- 未來若 backend 已重啟並支援 `answer_changed`，再改回逐筆事件上送，以利 rule engine 直接計算 `REPEATED_ANSWER_CHANGES`
+- learner 頁改從 `/api/v1/sessions/recent` 讀取所選業務員與課程的近期 session
+- 只要近期 session 中有 `streak_shield_locked` 或 `module_completion_frozen`，右側狀態就同步顯示鎖定/凍結
+- Dashboard 近期 Session 卡片也新增 `Streak 鎖定`、`模組凍結` badge，讓懲罰狀態更容易被看見
+
+## 24. 單筆 flag 審核可能覆蓋同 session 其他高風險懲罰
+### 問題
+同一個 session 可能命中多條規則。如果只根據目前被審核的單筆 flag 更新 session 狀態，審核低/中風險 flag 時，可能把同 session 仍未核准的高風險凍結狀態覆蓋掉。
+
+### 影響
+- 高風險 session 可能被錯誤解鎖
+- Streak Shield 與模組完成資格狀態會與實際 pending flags 不一致
+- 主管審核單筆事件時，會意外影響同 session 的整體風險懲罰
+
+### 解法
+- 審核任一 flag 後，重新掃描同一個 session 的所有 flags
+- 只要仍有未核准高風險 flag，就保持：
+  - `streak_shield_locked = true`
+  - `module_completion_frozen = true`
+  - 積分維持 0
+- 只有同 session 所有風險都已核准後，才恢復積分與資格
+
+## 25. 歷史稽核紀錄在 pending 案件上看起來像消失
+### 問題
+張雅婷 AML 的 flag 仍是 `pending`，該 session 本身沒有 audit log，因此 Flag Detail 的「歷史稽核紀錄」會顯示空白。但資料庫中其他已審核案例的 audit log 其實存在。
+
+### 影響
+- 使用者容易以為 audit log 資料消失
+- 刷新 dashboard 後若剛好選到 pending 案件，會誤判為功能壞掉
+- 不利於展示「稽核紀錄可追溯」這個核心價值
+
+### 解法
+- Flag Detail 先查同 session 的 audit log
+- 若同 session 尚無紀錄，fallback 顯示最近 5 筆全域稽核紀錄
+- Audit Trail 新增兩個下拉篩選：
+  - 審核主管
+  - 業務員
+- 另外確認 `compliance_audit_log` 已有 trigger 阻擋 `UPDATE`、`DELETE`、`TRUNCATE`
+
+## 26. Email 通知在 demo 階段增加不必要變數
+### 問題
+曾短暫加入審核後 email 通知：`voided` 寄給業務、`escalated_to_hr` 寄給 HR。但目前專案沒有正式 SMTP 設定，demo 階段加入 email 容易造成額外設定負擔。
+
+### 影響
+- 若 SMTP 未設定，必須額外做 outbox fallback
+- 審核流程可能因寄信設定而變複雜
+- demo 重點會從合規 dashboard 偏移到 email 基礎設施
+
+### 解法
+- 移除 email notification service
+- 移除 SMTP / EMAIL config
+- 刪除測試用 `email_outbox`
+- 目前審核只更新資料庫與 audit log，不發送 email
+
+## 27. 鏡頭/畫面偵測規則不適合目前展示版
+### 問題
+原本設計了 `LONG_FACE_ABSENCE` 與 `MULTIPLE_FACES_PRESENT`，並以瀏覽器本地 `FaceDetector API` 做鏡頭 presence monitor。但實際評估後，瀏覽器支援度、權限授權、現場 demo 穩定性都不適合放在主流程。
+
+### 影響
+- Safari / Firefox 多半不可用
+- Chrome 也可能受版本、權限與 localhost/HTTPS 條件影響
+- demo 現場容易因鏡頭權限或硬體問題中斷
+- 功能敘事會從「學習行為證據」偏向「影像監控」，增加隱私疑慮
+
+### 解法
+- 停用 `LONG_FACE_ABSENCE`
+- 停用 `MULTIPLE_FACES_PRESENT`
+- Dashboard 異常規則說明移除兩條鏡頭規則
+- Session Detail 移除「離開測驗畫面歷程」
+- 保留更穩定的作答速度、改答、切頁、頁面焦點與互動密度規則
+
+## 28. 前端快取讓刷新後仍看到舊畫面
+### 問題
+Dashboard 與 learner 頁多次修改後，瀏覽器可能仍載入舊版 JS/CSS，造成使用者刷新後仍看到舊規則、舊 Timeline 或舊狀態。
+
+### 影響
+- 使用者以為修改未生效
+- 實際後端資料正確，但前端顯示仍是舊邏輯
+- demo 前排查成本提高
+
+### 解法
+- 更新 `index.html`、`learner.html` 中 JS/CSS 的 query string 版本
+- 需要時提醒使用者 hard refresh
+- 文件中補充若看到舊畫面，先確認快取與資源版本
+
+## 29. Backend 重啟遇到舊程序與 venv shebang 路徑問題
+### 問題
+重啟 backend 時遇到兩個問題：
+- `.venv/bin/uvicorn` 的 shebang 指向舊資料夾路徑
+- `localhost:8000` 已被舊 Python 程序占用
+
+### 影響
+- 直接執行 `uvicorn` 會找不到舊路徑的 Python
+- 新 backend 無法綁定 8000 port
+- 即使程式碼已更新，瀏覽器仍可能打到舊服務
+
+### 解法
+- 改用 `.venv/bin/python -m uvicorn app.main:app --port 8000`
+- 使用 `lsof -nP -iTCP:8000 -sTCP:LISTEN` 找出舊 PID
+- `kill <PID>` 後重新啟動 backend
+- 用 `/health` 確認新服務與資料庫都正常
+
+## 30. 文件與實作狀態不同步
+### 問題
+README、開發摘要、手動測試清單與 runbook 曾保留舊內容，例如鏡頭偵測、舊路徑、舊 demo 入口、email 通知與已淘汰流程。
+
+### 影響
+- 新讀者會誤以為鏡頭規則仍在主流程
+- 測試者可能照舊文件測已經停用的功能
+- 本機啟動路徑與實際 repo 位置不一致，容易啟動失敗
+
+### 解法
+- 更新：
+  - `README.md`
+  - `DEVELOPMENT_SUMMARY.md`
+  - `MANUAL_TEST_CHECKLIST.md`
+  - `LOCAL_RUNBOOK.md`
+- 文件改以目前真實狀態為準：
+  - 有效規則
+  - 停用規則
+  - learner 狀態同步
+  - dashboard Audit Trail 篩選
+  - 不發送 email
+  - 不使用鏡頭/畫面偵測規則

@@ -21,7 +21,9 @@ class LearningSession(Base):
     context_switch_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cards_swiped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     leaderboard_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    weekly_reward_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     streak_shield_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    module_completion_frozen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
