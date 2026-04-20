@@ -82,17 +82,20 @@
 - `POST /api/v1/flags/{flag_id}/resolution`
 
 ## 成果展示-合規風險監控儀表板
+圖一
 <img width="1437" height="794" alt="image" src="https://github.com/user-attachments/assets/adce8128-9c43-47b0-b876-6abb7242bb3f" />
+圖二
+<img width="1437" height="803" alt="image" src="https://github.com/user-attachments/assets/78dd83c9-cb15-4fce-bd86-cc5f037a0d48" />
 
-<img width="1429" height="794" alt="image" src="https://github.com/user-attachments/assets/e3db8701-06aa-4351-9c26-8cb6712cf7dd" />
-
+圖三
 <img width="1430" height="803" alt="image" src="https://github.com/user-attachments/assets/7ff18ef7-4ce6-4095-bcc5-b6da97adbcd8" />
-
+圖四
 <img width="887" height="731" alt="image" src="https://github.com/user-attachments/assets/7493f080-2c67-4896-8124-fa4d3d67bc1d" />
 
 ## 成果展示-學員測驗平台
+圖一
 <img width="1323" height="763" alt="image" src="https://github.com/user-attachments/assets/4e044d4b-38ae-4ae2-9a17-097970202350" />
-
+圖二
 <img width="1317" height="801" alt="image" src="https://github.com/user-attachments/assets/3904b26f-9c28-499d-a6a6-be39c49a4cd4" />
 
 ## 一句話總結
