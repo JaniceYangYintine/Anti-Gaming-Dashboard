@@ -336,13 +336,7 @@ Response `201`:
 | `keyboard_activity` | 鍵盤互動摘要。 | `keydown_count`、`active_milliseconds`：非負整數；`shortcut_count` 選填，預設視為 0。 |
 | `page_visibility` | 頁面可見狀態。 | `visibility_state`：`visible` 或 `hidden`；`source`：非空字串。 |
 | `page_dwell_summary` | 頁面停留摘要。 | `focused_seconds`、`hidden_seconds`、`hidden_count`：非負整數。 |
-| `face_presence` | 鏡頭偵測相容保留事件。 | `source`、`detector_name`：非空字串；`faces_detected`：非負整數；`absence_duration_seconds` 選填。 |
-| `face_absence` | 鏡頭偵測相容保留事件。 | `source`、`detector_name`：非空字串；`faces_detected`：非負整數。 |
-| `multiple_faces_detected` | 鏡頭偵測相容保留事件。 | `source`、`detector_name`：非空字串；`faces_detected`：非負整數。 |
-| `camera_monitor_summary` | 鏡頭偵測摘要相容保留事件。 | `face_present_seconds`、`face_absent_seconds`、`longest_face_absence_seconds`、`absence_count`、`multiple_faces_seconds`、`multiple_faces_detected_count`：非負整數；`source`、`detector_name`：非空字串。 |
 | `session_completed` | session 完成，觸發規則判斷。 | 無特殊要求，但時間必須晚於 `started_at`。 |
-
-目前前端主流程不再使用鏡頭/畫面偵測規則；鏡頭相關 event type 僅為後端相容保留，不建議新流程使用。
 
 事件時間驗證：
 
@@ -567,4 +561,3 @@ Response:
 | `weekly_reward_points` | 本週獎勵積分。中/高風險未核准時會歸零。 |
 | `streak_shield_locked` | 連續學習保護是否鎖定。高風險未核准時為 `true`。 |
 | `module_completion_frozen` | 模組完成資格是否凍結。高風險未核准時為 `true`。 |
-
