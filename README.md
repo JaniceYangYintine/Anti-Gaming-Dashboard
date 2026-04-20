@@ -81,17 +81,5 @@
 - `GET /api/v1/flags/{flag_id}`
 - `POST /api/v1/flags/{flag_id}/resolution`
 
-## 本機啟動
-請參考 [LOCAL_RUNBOOK.md](./LOCAL_RUNBOOK.md)。
-
-常用入口：
-- Learner: [http://127.0.0.1:5500/learner.html](http://127.0.0.1:5500/learner.html)
-- Dashboard: [http://127.0.0.1:5500/index.html](http://127.0.0.1:5500/index.html)
-- Backend health: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
-- Swagger Docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-
-## Manual Test
-請參考 [MANUAL_TEST_CHECKLIST.md](./MANUAL_TEST_CHECKLIST.md)。
-
 ## 一句話總結
 這是一套把微學習行為轉成可查核、可審核、可追溯證據的合規風險控管系統。
