@@ -83,20 +83,33 @@
 
 ## 成果展示-合規風險監控儀表板
 圖一
-<img width="1437" height="794" alt="image" src="https://github.com/user-attachments/assets/adce8128-9c43-47b0-b876-6abb7242bb3f" />
+<img width="1459" height="772" alt="image" src="https://github.com/user-attachments/assets/9ffa2e99-e0a2-40f3-84a6-dc1cf8af5632" />
+
 圖二
 <img width="1437" height="803" alt="image" src="https://github.com/user-attachments/assets/78dd83c9-cb15-4fce-bd86-cc5f037a0d48" />
 
 圖三
-<img width="1430" height="803" alt="image" src="https://github.com/user-attachments/assets/7ff18ef7-4ce6-4095-bcc5-b6da97adbcd8" />
+<img width="1429" height="698" alt="image" src="https://github.com/user-attachments/assets/9a5186b7-4a7f-40d2-9126-5b7a8afeabdc" />
+
 圖四
+<img width="1393" height="764" alt="image" src="https://github.com/user-attachments/assets/6964ad34-04df-4d10-807d-421be0bb0906" />
+
+圖五
+<img width="1430" height="803" alt="image" src="https://github.com/user-attachments/assets/7ff18ef7-4ce6-4095-bcc5-b6da97adbcd8" />
+
+圖六
 <img width="887" height="731" alt="image" src="https://github.com/user-attachments/assets/7493f080-2c67-4896-8124-fa4d3d67bc1d" />
 
 ## 成果展示-學員測驗平台
 圖一
-<img width="1323" height="763" alt="image" src="https://github.com/user-attachments/assets/4e044d4b-38ae-4ae2-9a17-097970202350" />
+<img width="1364" height="699" alt="image" src="https://github.com/user-attachments/assets/d7505ec5-68db-4f2b-b71a-0b6bcaaede21" />
+
 圖二
-<img width="1317" height="801" alt="image" src="https://github.com/user-attachments/assets/3904b26f-9c28-499d-a6a6-be39c49a4cd4" />
+<img width="1349" height="755" alt="image" src="https://github.com/user-attachments/assets/f58bd19b-fc50-4a42-be96-12fb701fc746" />
+
+圖三
+<img width="1328" height="664" alt="image" src="https://github.com/user-attachments/assets/6c846aa7-24ec-4c7c-af42-53f1b010004e" />
+
 
 ## 一句話總結
 這是一套把微學習行為轉成可查核、可審核、可追溯證據的合規風險控管系統。
