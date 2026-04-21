@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 SeverityLevel = Literal["low", "medium", "high"]
 ResolutionStatus = Literal["pending", "approved", "voided", "escalated_to_hr"]
+ResolutionAction = Literal["approved", "voided", "escalated_to_hr"]
 
 
 class FlagSummaryCounts(BaseModel):
@@ -42,7 +43,7 @@ class AuditLogEntry(BaseModel):
     audit_id: str
     manager_id: str
     manager_name: str
-    action_taken: ResolutionStatus
+    action_taken: ResolutionAction
     manager_justification_notes: str
     created_at: str
     agent_name: str | None = None
@@ -89,5 +90,5 @@ class FlagListResponse(BaseModel):
 
 class ResolutionRequest(BaseModel):
     manager_id: str = Field(min_length=1)
-    action_taken: ResolutionStatus
+    action_taken: ResolutionAction
     manager_justification_notes: str = Field(min_length=1)

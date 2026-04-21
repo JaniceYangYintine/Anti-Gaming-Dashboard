@@ -40,6 +40,7 @@ def seed_dev_data() -> None:
         if len(rule_map) < 3:
             raise RuntimeError("compliance_rules is incomplete. Please import schema.sql first.")
 
+        _sync_demo_rule_status(db=db)
         _cleanup_existing_demo_data(db=db)
         _insert_learning_sessions(db=db, now=now)
         _insert_session_events(db=db, now=now)
@@ -50,6 +51,22 @@ def seed_dev_data() -> None:
         print("Seed data inserted successfully with deterministic demo sessions.")
     finally:
         db.close()
+
+
+def _sync_demo_rule_status(db) -> None:
+    db.execute(
+        text(
+            """
+            UPDATE compliance_rules
+            SET is_active = rule_code NOT IN ('EXCESSIVE_CONTEXT_SWITCH')
+            WHERE rule_code IN (
+              'EXCESSIVE_CONTEXT_SWITCH',
+              'LONG_FACE_ABSENCE',
+              'MULTIPLE_FACES_PRESENT'
+            )
+            """
+        )
+    )
 
 
 def _cleanup_existing_demo_data(db) -> None:

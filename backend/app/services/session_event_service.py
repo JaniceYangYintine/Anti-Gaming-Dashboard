@@ -311,3 +311,50 @@ class SessionEventService:
             }.items():
                 if not isinstance(value, int) or value < 0:
                     raise ValueError(f"page_dwell_summary {key} must be a non-negative integer")
+
+        if payload.event_type in {"camera_monitor_started", "camera_monitor_stopped"}:
+            source = payload.metadata_json.get("source")
+            detector_name = payload.metadata_json.get("detector_name")
+            if source is None or detector_name is None:
+                raise ValueError(f"{payload.event_type} requires source and detector_name in metadata_json")
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError(f"{payload.event_type} source must be a non-empty string")
+            if not isinstance(detector_name, str) or not detector_name.strip():
+                raise ValueError(f"{payload.event_type} detector_name must be a non-empty string")
+
+        if payload.event_type in {"face_presence", "face_absence", "multiple_faces_detected"}:
+            source = payload.metadata_json.get("source")
+            detector_name = payload.metadata_json.get("detector_name")
+            faces_detected = payload.metadata_json.get("faces_detected")
+            if source is None or detector_name is None or faces_detected is None:
+                raise ValueError(
+                    f"{payload.event_type} requires source, detector_name and faces_detected in metadata_json"
+                )
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError(f"{payload.event_type} source must be a non-empty string")
+            if not isinstance(detector_name, str) or not detector_name.strip():
+                raise ValueError(f"{payload.event_type} detector_name must be a non-empty string")
+            if not isinstance(faces_detected, int) or faces_detected < 0:
+                raise ValueError(f"{payload.event_type} faces_detected must be a non-negative integer")
+
+        if payload.event_type == "camera_monitor_summary":
+            required_integer_fields = [
+                "face_present_seconds",
+                "face_absent_seconds",
+                "longest_face_absence_seconds",
+                "absence_count",
+                "multiple_faces_seconds",
+                "multiple_faces_detected_count",
+            ]
+            for field_name in required_integer_fields:
+                value = payload.metadata_json.get(field_name)
+                if value is None:
+                    raise ValueError(f"camera_monitor_summary requires {field_name} in metadata_json")
+                if not isinstance(value, int) or value < 0:
+                    raise ValueError(f"camera_monitor_summary {field_name} must be a non-negative integer")
+            for field_name in ["source", "detector_name"]:
+                value = payload.metadata_json.get(field_name)
+                if value is None:
+                    raise ValueError(f"camera_monitor_summary requires {field_name} in metadata_json")
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(f"camera_monitor_summary {field_name} must be a non-empty string")

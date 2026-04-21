@@ -16,10 +16,14 @@ from app.schemas.flag import (
     SessionSnapshot,
     TimelineEntry,
 )
+from app.services.notification_service import NotificationService
 from app.services.rule_evaluation_service import BASE_MODULE_POINTS, WEEKLY_REVIEW_REWARD_POINTS
 
 
 class FlagService:
+    def __init__(self) -> None:
+        self.notification_service = NotificationService()
+
     def list_flags(
         self,
         db: Session,
@@ -256,7 +260,10 @@ class FlagService:
             },
         )
         db.commit()
-        return self.get_flag_detail(db=db, flag_id=flag_id)
+        flag_detail = self.get_flag_detail(db=db, flag_id=flag_id)
+        if flag_detail is not None:
+            self.notification_service.send_resolution_email(flag_detail)
+        return flag_detail
 
     @staticmethod
     def _sync_session_penalties(db: Session, session_id: str) -> None:

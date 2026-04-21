@@ -82,6 +82,27 @@
         </main>
 
         <aside class="panel learner-scoreboard">
+          <section class="learner-camera-panel" aria-label="鏡頭 presence 偵測">
+            <div class="leaderboard-list-head">
+              <h3>鏡頭偵測</h3>
+              <span id="camera-support-status" class="status-pill status-warn">檢查中</span>
+            </div>
+            <div class="camera-preview-shell">
+              <video id="camera-preview" class="camera-preview" playsinline muted></video>
+            </div>
+            <div class="camera-actions">
+              <button id="camera-start-button" class="ghost-button" type="button">啟用鏡頭</button>
+              <button id="camera-stop-button" class="ghost-button" type="button">停止鏡頭</button>
+            </div>
+            <div class="camera-test-actions">
+              <button id="camera-test-absence-button" class="ghost-button" type="button">送出離開畫面測試</button>
+              <button id="camera-test-multiple-button" class="ghost-button" type="button">送出多人測試</button>
+            </div>
+            <div class="camera-status-list">
+              <span id="camera-monitor-status" class="status-pill status-warn">未啟用</span>
+              <p id="camera-status-message" class="muted">建立 Session 後可啟用鏡頭 presence 偵測。</p>
+            </div>
+          </section>
           <p class="eyebrow">Leaderboard</p>
           <h2>排行榜與積分</h2>
           <section class="learner-reward-panel" aria-label="目前學員積分與獎懲狀態">
@@ -126,6 +147,6 @@
       </div>
     </div>
 
-    <script src="./learner.js?v=20260421-streak-zh"></script>
+    <script src="./learner.js?v=20260421-camera-right-side"></script>
   </body>
 </html>

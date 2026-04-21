@@ -1,5 +1,11 @@
 # Manual Test Checklist
 
+## 2026-04-21 更新紀錄
+
+- 已恢復鏡頭 presence 偵測與 email 通知測試路徑。
+- Chrome/Safari 若沒有原生 `FaceDetector`，學員頁會改用 MediaPipe Face Detector CDN module；若仍失敗，會保留測試模式按鈕。
+- 鏡頭偵測成功後，完成 Session 可觸發 `LONG_FACE_ABSENCE` 或 `MULTIPLE_FACES_PRESENT`。
+
 ## 0. 環境健康檢查
 
 1. 開啟 backend。
@@ -10,13 +16,13 @@
 ```
 
 3. 開啟前端 server。
-4. 開啟 `http://127.0.0.1:5500/index.html`。
+4. 開啟 `http://127.0.0.1:5500/index.html`。若 `5500` 被舊程序占用，可改用 `5501`，目前 CORS 已支援。
 5. 確認 dashboard 上方 Backend API 與 Database 顯示正常。
 
 ## 1. Learner Simulator：產生真實風險事件
 
-1. 開啟 `http://127.0.0.1:5500/learner.html`。
-2. 選擇 `A4167｜張雅婷` 與 `COURSE-AML-101｜AML 防制洗錢必修`。
+1. 開啟 `http://127.0.0.1:5500/learner.html`。若前端開在 `5501`，請改用 `http://127.0.0.1:5501/learner.html`。
+2. 選擇 `A1028｜陳冠宇` 與 `COURSE-AML-101｜AML 防制洗錢必修`。
 3. 確認若該學員已有高風險 pending flag，右側會顯示：
    - `Streak Shield`：暫時鎖定
    - `模組完成資格`：已凍結
@@ -77,10 +83,16 @@
 3. 填入備註後送出。
 4. 確認 flag 狀態更新。
 5. 確認 Audit Trail 新增一筆紀錄。
-6. 使用 Audit Trail 下拉選單測試：
+6. 確認「送出審核」按鈕旁出現綠框「審核已送出」。
+7. 使用 Audit Trail 下拉選單測試：
    - 審核主管篩選
    - 業務員篩選
-7. 確認目前不會產生 email 或 `email_outbox`。
+8. 若 `.env` 設定 `NOTIFICATION_EMAIL_ENABLED=true` 與 SMTP 收件資訊，確認：
+   - 選 `誤判核准` 不寄信。
+   - 選 `作廢重修` 會寄重修通知，提醒業務員可能有作弊風險，請重新進行學習及測試。
+   - 選 `通報 HR` 會寄 HR 調查通知，內容附上業務員姓名與高度作弊嫌疑說明。
+   - 未設定 SMTP 或寄送失敗時，審核與 audit log 仍正常完成。
+   - Gmail SMTP 需使用 Google app password；若密碼由四組字串組成，後端會自動移除空白後登入。
 
 ## 6. 懲罰狀態同步
 
@@ -114,11 +126,30 @@ ORDER BY rule_code;
 ```
 
 預期：
-- `LONG_FACE_ABSENCE` inactive
-- `MULTIPLE_FACES_PRESENT` inactive
+- `LONG_FACE_ABSENCE` active
+- `MULTIPLE_FACES_PRESENT` active
 - `EXCESSIVE_CONTEXT_SWITCH` inactive
 
-## 8. Audit Log 不可變動
+## 8. 鏡頭偵測與 MediaPipe fallback
+
+1. 開啟 `http://127.0.0.1:5500/learner.html`。若前端開在 `5501`，請改用 `http://127.0.0.1:5501/learner.html`。
+2. 強制重新整理，避免吃到舊版 `learner.js`。
+3. 建立 Session。
+4. 按 `啟用鏡頭`。
+5. 若瀏覽器有原生 `FaceDetector`，確認狀態進入監測中。
+6. 若沒有原生 `FaceDetector`，確認頁面會載入 MediaPipe fallback 並進入監測中。
+7. 遮住鏡頭或離開畫面，確認狀態會變成離開畫面。
+8. 讓兩人同時入鏡，確認狀態會變成多人。
+9. 完成測驗，確認 Risk Inbox 產生鏡頭相關高風險 flag。
+10. 回 dashboard 的 Session Detail，確認「鏡頭偵測紀錄」顯示：
+    - 鏡頭開啟時間
+    - 鏡頭關閉時間
+    - 雙人出現開始時間
+    - 雙人結束時間
+    - 雙人持續時間與累計秒數
+11. 若 CDN/WASM/model 載入失敗，確認錯誤訊息會指出 `MediaPipe module`、`WASM` 或 `人臉模型` 哪一段失敗，並可用測試模式送出測試訊號。
+
+## 9. Audit Log 不可變動
 
 可用測試交易確認 trigger 會阻擋更新：
 

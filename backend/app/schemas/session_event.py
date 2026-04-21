@@ -14,6 +14,12 @@ EventType = Literal[
     "keyboard_activity",
     "page_visibility",
     "page_dwell_summary",
+    "camera_monitor_started",
+    "camera_monitor_stopped",
+    "face_presence",
+    "face_absence",
+    "multiple_faces_detected",
+    "camera_monitor_summary",
     "session_completed",
 ]
 

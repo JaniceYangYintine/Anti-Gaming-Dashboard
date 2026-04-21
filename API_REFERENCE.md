@@ -12,6 +12,12 @@ http://127.0.0.1:8000
 http://127.0.0.1:8000/docs
 ```
 
+## 2026-04-21 更新紀錄
+- `POST /api/v1/session-events` 已支援鏡頭 presence 事件與 `camera_monitor_summary`。
+- `POST /api/v1/flags/{flag_id}/resolution` 在 `voided` 或 `escalated_to_hr` 審核成功後，後端可依 SMTP 設定寄送 email 通知；`approved` 不寄信。
+- Gmail SMTP 已以 Google app password 完成實寄驗證；email 失敗只記錄後端 log，不會回滾審核與 audit log。
+- 鏡頭規則 `LONG_FACE_ABSENCE`、`MULTIPLE_FACES_PRESENT` 已恢復為 active rule。
+
 ## Status
 
 | Method | Path | 說明 |
@@ -63,11 +69,11 @@ Response:
   {
     "rule_id": "uuid",
     "rule_code": "IMPOSSIBLE_SPEED",
-    "rule_name": "不可能的完成速度",
+    "rule_name": "異常速度",
     "description": "30 秒內完成/交卷且答錯題數小於等於 5 題。",
     "parameter_json": {
       "max_duration_seconds": 30,
-      "max_wrong_answers": 5
+      "max_wrong_count": 5
     },
     "severity_level": "high",
     "is_active": true
@@ -104,8 +110,8 @@ Request:
 
 ```json
 {
-  "agent_id": "A4167",
-  "course_id": "AML-101",
+  "agent_id": "A1028",
+  "course_id": "COURSE-AML-101",
   "started_at": "2026-04-21T09:00:00+08:00"
 }
 ```
@@ -115,8 +121,8 @@ Response `201`:
 ```json
 {
   "session_id": "uuid",
-  "agent_id": "A4167",
-  "course_id": "AML-101",
+  "agent_id": "A1028",
+  "course_id": "COURSE-AML-101",
   "started_at": "2026-04-21T09:00:00+08:00",
   "finished_at": null,
   "duration_seconds": null,
@@ -155,10 +161,10 @@ Response:
   "items": [
     {
       "session_id": "uuid",
-      "agent_id": "A4167",
-      "agent_name": "張雅婷",
-      "branch_name": "台北分行",
-      "course_id": "AML-101",
+      "agent_id": "A1028",
+      "agent_name": "陳冠宇",
+      "branch_name": "台北信義分行",
+      "course_id": "COURSE-AML-101",
       "course_name": "AML 防制洗錢必修",
       "started_at": "2026-04-21T09:00:00+08:00",
       "finished_at": "2026-04-21T09:01:00+08:00",
@@ -181,14 +187,14 @@ Response:
   ],
   "agent_options": [
     {
-      "value": "A4167",
-      "label": "張雅婷｜台北分行｜A4167"
+      "value": "A1028",
+      "label": "陳冠宇｜台北信義分行｜A1028"
     }
   ],
   "course_options": [
     {
-      "value": "AML-101",
-      "label": "AML 防制洗錢必修｜AML-101"
+      "value": "COURSE-AML-101",
+      "label": "AML 防制洗錢必修｜COURSE-AML-101"
     }
   ]
 }
@@ -211,9 +217,9 @@ Response:
   "items": [
     {
       "rank": 1,
-      "agent_id": "A1001",
-      "agent_name": "王小明",
-      "branch_name": "台中分行",
+      "agent_id": "A1028",
+      "agent_name": "陳冠宇",
+      "branch_name": "台北信義分行",
       "leaderboard_points": 300,
       "weekly_reward_points": 30,
       "total_points": 330,
@@ -234,10 +240,10 @@ Response:
 {
   "session": {
     "session_id": "uuid",
-    "agent_id": "A4167",
-    "agent_name": "張雅婷",
-    "branch_name": "台北分行",
-    "course_id": "AML-101",
+    "agent_id": "A1028",
+    "agent_name": "陳冠宇",
+    "branch_name": "台北信義分行",
+    "course_id": "COURSE-AML-101",
     "course_name": "AML 防制洗錢必修",
     "started_at": "2026-04-21T09:00:00+08:00",
     "finished_at": "2026-04-21T09:01:00+08:00",
@@ -336,6 +342,12 @@ Response `201`:
 | `keyboard_activity` | 鍵盤互動摘要。 | `keydown_count`、`active_milliseconds`：非負整數；`shortcut_count` 選填，預設視為 0。 |
 | `page_visibility` | 頁面可見狀態。 | `visibility_state`：`visible` 或 `hidden`；`source`：非空字串。 |
 | `page_dwell_summary` | 頁面停留摘要。 | `focused_seconds`、`hidden_seconds`、`hidden_count`：非負整數。 |
+| `camera_monitor_started` | 鏡頭偵測開啟。 | `source`、`detector_name`：非空字串；`detector_engine`、`status` 選填。 |
+| `camera_monitor_stopped` | 鏡頭偵測關閉。 | `source`、`detector_name`：非空字串；`detector_engine`、`status` 選填。 |
+| `face_presence` | 鏡頭偵測恢復單一人臉 presence。 | `source`、`detector_name`：非空字串；`faces_detected`：非負整數；`absence_duration_seconds` 選填。 |
+| `face_absence` | 鏡頭偵測不到人臉。 | `source`、`detector_name`：非空字串；`faces_detected`：非負整數。 |
+| `multiple_faces_detected` | 鏡頭偵測多人出現。 | `source`、`detector_name`：非空字串；`faces_detected`：非負整數。 |
+| `camera_monitor_summary` | 鏡頭 presence 統計摘要，供鏡頭規則判斷。 | `face_present_seconds`、`face_absent_seconds`、`longest_face_absence_seconds`、`absence_count`、`multiple_faces_seconds`、`multiple_faces_detected_count`：非負整數；`source`、`detector_name`：非空字串。 |
 | `session_completed` | session 完成，觸發規則判斷。 | 無特殊要求，但時間必須晚於 `started_at`。 |
 
 事件時間驗證：
@@ -396,14 +408,14 @@ Response:
     {
       "flag_id": "uuid",
       "session_id": "uuid",
-      "agent_id": "A4167",
-      "agent_name": "張雅婷",
-      "branch_name": "台北分行",
-      "course_id": "AML-101",
+      "agent_id": "A1028",
+      "agent_name": "陳冠宇",
+      "branch_name": "台北信義分行",
+      "course_id": "COURSE-AML-101",
       "course_name": "AML 防制洗錢必修",
       "rule_id": "uuid",
       "rule_code": "IMPOSSIBLE_SPEED",
-      "rule_name": "不可能的完成速度",
+      "rule_name": "異常速度",
       "severity_level": "high",
       "resolution_status": "pending",
       "flag_timestamp": "2026-04-21T09:01:00+08:00",
@@ -424,14 +436,14 @@ Response:
   "flag": {
     "flag_id": "uuid",
     "session_id": "uuid",
-    "agent_id": "A4167",
-    "agent_name": "張雅婷",
-    "branch_name": "台北分行",
-    "course_id": "AML-101",
+    "agent_id": "A1028",
+    "agent_name": "陳冠宇",
+    "branch_name": "台北信義分行",
+    "course_id": "COURSE-AML-101",
     "course_name": "AML 防制洗錢必修",
     "rule_id": "uuid",
     "rule_code": "IMPOSSIBLE_SPEED",
-    "rule_name": "不可能的完成速度",
+    "rule_name": "異常速度",
     "severity_level": "high",
     "resolution_status": "pending",
     "flag_timestamp": "2026-04-21T09:01:00+08:00",
@@ -454,7 +466,7 @@ Response:
   "rule": {
     "rule_id": "uuid",
     "rule_code": "IMPOSSIBLE_SPEED",
-    "rule_name": "不可能的完成速度",
+    "rule_name": "異常速度",
     "description": "30 秒內完成/交卷且答錯題數小於等於 5 題。",
     "parameter_json": {
       "max_duration_seconds": 30
@@ -479,7 +491,7 @@ Response:
       "action_taken": "approved",
       "manager_justification_notes": "確認為合理學習行為。",
       "created_at": "2026-04-21T10:00:00+08:00",
-      "agent_name": "張雅婷",
+      "agent_name": "陳冠宇",
       "course_name": "AML 防制洗錢必修",
       "rule_code": "IMPOSSIBLE_SPEED"
     }
@@ -502,6 +514,9 @@ Response:
 - 更新 `flagged_sessions.resolution_status`
 - 寫入不可變動的 `compliance_audit_log`
 - 重新同步同一 session 的積分、連續學習保護鎖定與模組完成資格凍結狀態
+- 若 action 為 `voided`，寄送重修通知。
+- 若 action 為 `escalated_to_hr`，寄送 HR 調查通知。
+- 若 action 為 `approved`，不寄信。
 
 Request:
 
@@ -520,11 +535,18 @@ Request:
 | `approved` | 核准，視為誤判或可接受行為。 |
 | `voided` | 作廢重修。 |
 | `escalated_to_hr` | 通報 HR。 |
-| `pending` | schema 目前允許，但實務審核不建議用來提交 resolution。 |
+
+`pending` 是 flag 的初始狀態，不是可提交的主管審核動作。
 
 Response:
 
 同 `GET /api/v1/flags/{flag_id}`，回傳更新後的 flag detail。
+
+Email side effect:
+- `approved`：不寄信。
+- `voided`：若 SMTP 已設定，寄送「學習測驗重修通知」。
+- `escalated_to_hr`：若 SMTP 已設定，寄送「高作弊嫌疑調查通知」，內文包含業務員姓名。
+- Gmail SMTP 需使用 Google app password；後端會自動移除 `SMTP_PASSWORD` 中的空白。
 
 錯誤：
 

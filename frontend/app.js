@@ -1008,6 +1008,8 @@ function renderReadiness() {
         <p class="risk-rule-medium"><strong>中風險</strong>：低互動掛機，停留超過 10 分鐘未答題，或超過 10 分鐘才開始答題，觸發 <strong>LOW_INPUT_ACTIVITY</strong></p>
         <p class="risk-rule-high"><strong>高風險</strong>：異常速度，30 秒內完成/交卷，並且答錯題數小於以及等於 5 題，觸發 <strong>IMPOSSIBLE_SPEED</strong></p>
         <p class="risk-rule-high"><strong>高風險</strong>：切頁分心，一次 session 切頁超過 5 次，或頁面焦點比例低於 60%，觸發 <strong>LOW_PAGE_FOCUS_RATIO</strong></p>
+        <p class="risk-rule-high"><strong>高風險</strong>：鏡頭離開畫面，離開畫面總時長或單次離開時間超過門檻，觸發 <strong>LONG_FACE_ABSENCE</strong></p>
+        <p class="risk-rule-high"><strong>高風險</strong>：鏡頭出現多人，同時偵測到超過一張臉或多人持續時間超過門檻，觸發 <strong>MULTIPLE_FACES_PRESENT</strong></p>
         <p class="risk-rule-high"><strong>高風險</strong>：頁面停留不足，作答過程在題目頁停留時間明顯過短，單獨列為高風險觀察標籤</p>
         <p class="risk-rule-normal"><strong>正常學習</strong>：慢慢看、正常答題、不切頁，應該不產生高風險 flag</p>
       </div>
@@ -1456,6 +1458,147 @@ function renderSessionTimeline(timeline) {
     .join("");
 }
 
+function formatDurationSeconds(seconds) {
+  if (seconds === null || seconds === undefined || Number.isNaN(Number(seconds))) {
+    return "-";
+  }
+  const totalSeconds = Math.max(0, Math.round(Number(seconds)));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainderSeconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes} 分 ${remainderSeconds} 秒` : `${remainderSeconds} 秒`;
+}
+
+function secondsBetween(start, end) {
+  if (!start || !end) {
+    return null;
+  }
+  return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000));
+}
+
+function getLatestCameraSummary(timeline = []) {
+  return [...timeline]
+    .reverse()
+    .find((event) => event.event_type === "camera_monitor_summary")?.metadata_json || null;
+}
+
+function getCameraEvidenceEvents(timeline = []) {
+  const cameraEventTypes = new Set([
+    "camera_monitor_started",
+    "camera_monitor_stopped",
+    "face_presence",
+    "face_absence",
+    "multiple_faces_detected",
+    "camera_monitor_summary",
+  ]);
+  return timeline
+    .filter((event) => cameraEventTypes.has(event.event_type))
+    .sort((a, b) => new Date(a.event_timestamp) - new Date(b.event_timestamp));
+}
+
+function buildMultipleFaceSegments(timeline = []) {
+  const cameraTimeline = timeline
+    .filter((event) =>
+      [
+        "multiple_faces_detected",
+        "face_presence",
+        "face_absence",
+        "camera_monitor_stopped",
+        "session_completed",
+      ].includes(event.event_type)
+    )
+    .sort((a, b) => new Date(a.event_timestamp) - new Date(b.event_timestamp));
+  const segments = [];
+  let activeSegment = null;
+
+  cameraTimeline.forEach((event) => {
+    if (event.event_type === "multiple_faces_detected" && activeSegment === null) {
+      activeSegment = {
+        startedAt: event.event_timestamp,
+        endedAt: null,
+        facesDetected: event.metadata_json?.faces_detected ?? 2,
+      };
+      return;
+    }
+
+    if (
+      activeSegment !== null &&
+      ["face_presence", "face_absence", "camera_monitor_stopped", "session_completed"].includes(event.event_type)
+    ) {
+      activeSegment.endedAt = event.event_timestamp;
+      activeSegment.closedBy = event.event_type;
+      segments.push(activeSegment);
+      activeSegment = null;
+    }
+  });
+
+  if (activeSegment !== null) {
+    segments.push(activeSegment);
+  }
+
+  return segments;
+}
+
+function renderCameraMonitorHistory(timeline = []) {
+  const cameraEvents = getCameraEvidenceEvents(timeline);
+  const startedEvents = timeline.filter((event) => event.event_type === "camera_monitor_started");
+  const stoppedEvents = timeline.filter((event) => event.event_type === "camera_monitor_stopped");
+  const summary = getLatestCameraSummary(timeline);
+  const multipleSegments = buildMultipleFaceSegments(timeline);
+  const hasCameraEvidence =
+    startedEvents.length ||
+    stoppedEvents.length ||
+    summary ||
+    multipleSegments.length ||
+    cameraEvents.length;
+
+  if (!hasCameraEvidence) {
+    return `<p class="muted">這個 Session 尚無鏡頭偵測紀錄。</p>`;
+  }
+
+  const openedAt = startedEvents.at(0)?.event_timestamp || cameraEvents.at(0)?.event_timestamp || null;
+  const closedAt = stoppedEvents.at(-1)?.event_timestamp || cameraEvents.at(-1)?.event_timestamp || null;
+  const detectorName =
+    stoppedEvents.at(-1)?.metadata_json?.detector_name ||
+    startedEvents.at(0)?.metadata_json?.detector_name ||
+    summary?.detector_name ||
+    "-";
+  const multipleTotalSeconds = summary?.multiple_faces_seconds ?? null;
+
+  const segmentHtml = multipleSegments.length
+    ? multipleSegments
+        .map((segment, index) => {
+          const durationSeconds =
+            segment.endedAt !== null ? secondsBetween(segment.startedAt, segment.endedAt) : null;
+          return `
+            <article class="history-item">
+              <strong>雙人出現 #${index + 1}</strong>
+              <p>開始：${formatDate(segment.startedAt)}</p>
+              <p>結束：${segment.endedAt ? formatDate(segment.endedAt) : "尚未記錄結束"}</p>
+              <p>持續：${formatDurationSeconds(durationSeconds)}</p>
+              <p class="muted">偵測人數：${escapeHtml(segment.facesDetected)}｜結束事件：${escapeHtml(segment.closedBy || "-")}</p>
+            </article>
+          `;
+        })
+        .join("")
+    : `<p class="muted">這次 Session 沒有逐筆雙人出現事件。</p>`;
+
+  return `
+    <div class="key-value-list camera-summary-list">
+      <div class="key-value-item"><span class="muted">鏡頭開啟時間</span><strong>${openedAt ? formatDate(openedAt) : "未記錄"}</strong></div>
+      <div class="key-value-item"><span class="muted">鏡頭關閉時間</span><strong>${closedAt ? formatDate(closedAt) : "未記錄"}</strong></div>
+      <div class="key-value-item"><span class="muted">偵測器</span><strong>${escapeHtml(detectorName)}</strong></div>
+      <div class="key-value-item"><span class="muted">單人出現總時長</span><strong>${formatDurationSeconds(summary?.face_present_seconds)}</strong></div>
+      <div class="key-value-item"><span class="muted">離開畫面總時長</span><strong>${formatDurationSeconds(summary?.face_absent_seconds)}</strong></div>
+      <div class="key-value-item"><span class="muted">最長離開畫面</span><strong>${formatDurationSeconds(summary?.longest_face_absence_seconds)}</strong></div>
+      <div class="key-value-item"><span class="muted">雙人出現次數</span><strong>${summary?.multiple_faces_detected_count ?? multipleSegments.length}</strong></div>
+      <div class="key-value-item"><span class="muted">雙人累計持續</span><strong>${formatDurationSeconds(multipleTotalSeconds)}</strong></div>
+    </div>
+    <div class="history-list camera-history-list">
+      ${segmentHtml}
+    </div>
+  `;
+}
+
 function renderSessionDetail(payload) {
   const answerChanges = extractMetadataList(payload.timeline, "answer_change_log");
   const finalAnswers = extractLatestMetadataObject(payload.timeline, "final_answers");
@@ -1483,6 +1626,10 @@ function renderSessionDetail(payload) {
           <div class="key-value-item"><span class="muted">最新事件</span><strong>${payload.session.latest_event_type ? escapeHtml(payload.session.latest_event_type) : "無"}</strong></div>
           <div class="key-value-item"><span class="muted">風險摘要</span><strong>${escapeHtml(ruleSummary)}</strong></div>
         </div>
+      </section>
+      <section class="card">
+        <h3>鏡頭偵測紀錄</h3>
+        ${renderCameraMonitorHistory(payload.timeline)}
       </section>
     </div>
     <div class="detail-grid">
@@ -1717,13 +1864,16 @@ function refreshRecentSessions() {
   loadRecentSessions().catch(console.error);
 }
 
-async function loadFlagDetail(flagId) {
+async function loadFlagDetail(flagId, options = {}) {
+  const { clearResolutionStatus = true } = options;
   state.selectedFlagId = flagId;
   renderFlagList(state.items);
   try {
     const payload = await fetchJson(`${API_BASE}/flags/${flagId}`);
     renderDetail(payload);
-    elements.resolutionStatus.textContent = "";
+    if (clearResolutionStatus) {
+      setFeedback(elements.resolutionStatus, "", "");
+    }
   } catch (error) {
     renderDetailError(`請先確認資料可讀取。${translateErrorMessage(error.message)}`);
   }
@@ -1945,21 +2095,11 @@ async function submitResolution(event) {
       }),
     });
 
-    const streakStatus = payload.session.streak_shield_locked ? "仍為鎖定" : "已解鎖";
-    const totalPoints = (payload.session.leaderboard_points || 0) + (payload.session.weekly_reward_points || 0);
-    const pointStatus =
-      totalPoints === 0
-        ? "排行榜積分目前為 0"
-        : `排行榜積分目前為 ${totalPoints}`;
-    const moduleStatus = payload.session.module_completion_frozen ? "模組完成資格仍凍結" : "模組完成資格正常";
-    setFeedback(
-      elements.resolutionStatus,
-      "is-success",
-      `已更新為「${statusLabel[payload.flag.resolution_status]}」，${streakStatus}，${pointStatus}，${moduleStatus}`
-    );
+    setFeedback(elements.resolutionStatus, "is-success", "審核已送出");
     renderDetail(payload);
     await loadFlags();
-    await loadFlagDetail(state.selectedFlagId);
+    await loadFlagDetail(state.selectedFlagId, { clearResolutionStatus: false });
+    setFeedback(elements.resolutionStatus, "is-success", "審核已送出");
   } catch (error) {
     setFeedback(elements.resolutionStatus, "is-error", translateErrorMessage(error.message));
   }

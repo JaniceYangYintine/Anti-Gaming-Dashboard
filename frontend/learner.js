@@ -1,6 +1,11 @@
 const API_BASE = "http://localhost:8000/api/v1";
 const BASE_MODULE_POINTS = 100;
 const WEEKLY_REVIEW_REWARD_POINTS = 10;
+const CAMERA_DETECTION_INTERVAL_MS = 3000;
+const MEDIAPIPE_VISION_BUNDLE_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
+const MEDIAPIPE_WASM_ROOT_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
+const MEDIAPIPE_FACE_MODEL_URL =
+  "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
 
 const ruleCodeLabel = {
   REPEATED_ANSWER_CHANGES: "反覆改答",
@@ -169,6 +174,8 @@ const state = {
     visibilityLog: [],
   },
   latestFlags: [],
+  sessionCompleted: false,
+  cameraMonitor: createCameraMonitorState(),
 };
 
 const elements = {
@@ -188,9 +195,46 @@ const elements = {
   leaderboardList: document.querySelector("#leaderboard-list"),
   completionModal: document.querySelector("#completion-modal"),
   completionConfirmButton: document.querySelector("#completion-confirm-button"),
+  cameraPreview: document.querySelector("#camera-preview"),
+  cameraStartButton: document.querySelector("#camera-start-button"),
+  cameraStopButton: document.querySelector("#camera-stop-button"),
+  cameraSupportStatus: document.querySelector("#camera-support-status"),
+  cameraMonitorStatus: document.querySelector("#camera-monitor-status"),
+  cameraStatusMessage: document.querySelector("#camera-status-message"),
+  cameraPanel: document.querySelector(".learner-camera-panel"),
+  cameraTestAbsenceButton: document.querySelector("#camera-test-absence-button"),
+  cameraTestMultipleButton: document.querySelector("#camera-test-multiple-button"),
 };
 
+function createCameraMonitorState() {
+  return {
+    supported: false,
+    nativeFaceDetectorSupported: false,
+    detectorName: "unsupported",
+    detectorEngine: "none",
+    enabled: false,
+    stream: null,
+    detector: null,
+    intervalId: null,
+    detecting: false,
+    status: "idle",
+    lastObservedAt: null,
+    currentAbsenceStartedAt: null,
+    summary: {
+      facePresentMilliseconds: 0,
+      faceAbsentMilliseconds: 0,
+      multipleFacesMilliseconds: 0,
+      longestFaceAbsenceMilliseconds: 0,
+      absenceCount: 0,
+      multipleFacesDetectedCount: 0,
+    },
+  };
+}
+
 function setPill(element, ok, label) {
+  if (!element) {
+    return;
+  }
   element.classList.remove("status-ok", "status-warn");
   element.classList.add(ok ? "status-ok" : "status-warn");
   element.textContent = label;
@@ -428,6 +472,8 @@ function renderCards() {
 }
 
 function renderQuiz() {
+  const canTakeQuiz = Boolean(state.sessionId && state.cameraMonitor.enabled && !state.sessionCompleted);
+  elements.submitButton.disabled = !canTakeQuiz;
   elements.quizForm.innerHTML = questions
     .map(
       (question) => `
@@ -442,7 +488,7 @@ function renderQuiz() {
                     name="${question.id}"
                     value="${option.value}"
                     data-question-id="${question.id}"
-                    ${!state.sessionId ? "disabled" : ""}
+                    ${canTakeQuiz ? "" : "disabled"}
                   />
                   <span>${option.label}</span>
                 </label>
@@ -479,6 +525,7 @@ function resetSessionState() {
   resetInputTracking();
   resetPageTracking();
   state.latestFlags = [];
+  state.sessionCompleted = false;
   renderRewardStatus();
   setPill(elements.sessionChip, false, "尚未開始");
   renderCards();
@@ -504,7 +551,12 @@ async function startSession() {
   await sendEvent("session_started", {
     source: "learner_simulator",
   });
-  setFeedback("Session 已建立", "現在可以閱讀卡片、作答；切換瀏覽器分頁時系統會自動記錄。", "success");
+  setFeedback(
+    "Session 已建立",
+    "請先按右側「啟用鏡頭」按鈕；鏡頭未啟用前，測驗作答與送出會保持鎖定。",
+    "success"
+  );
+  window.alert("請先按右側「啟用鏡頭」按鈕。鏡頭未啟用前無法進行測驗。");
   renderCards();
   renderQuiz();
 }
@@ -644,6 +696,391 @@ function buildPageVisibilityEvidence() {
   };
 }
 
+function detectCameraSupport() {
+  const hasMediaDevices =
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getUserMedia === "function";
+  const hasFaceDetector = typeof window !== "undefined" && "FaceDetector" in window;
+  state.cameraMonitor.supported = hasMediaDevices;
+  state.cameraMonitor.nativeFaceDetectorSupported = hasFaceDetector;
+  state.cameraMonitor.detectorName = hasFaceDetector ? "FaceDetector" : "MediaPipe Face Detector";
+  state.cameraMonitor.detectorEngine = hasFaceDetector ? "native" : "mediapipe";
+  setPill(elements.cameraSupportStatus, hasMediaDevices, hasMediaDevices ? "可用" : "不支援");
+  elements.cameraPanel?.classList.toggle("is-test-mode", !hasMediaDevices);
+  renderCameraMonitorStatus(
+    hasMediaDevices ? "未啟用" : "測試模式",
+    true,
+    hasMediaDevices
+      ? hasFaceDetector
+        ? "開始 Session 後可啟用鏡頭，系統只送出 presence 統計，不會上傳影像。"
+        : "此瀏覽器沒有原生 FaceDetector；啟用鏡頭時會改用 MediaPipe fallback。"
+      : "目前瀏覽器不能開啟鏡頭；你仍可用測試按鈕驗證鏡頭規則、Risk Inbox 與 email 通知。"
+  );
+}
+
+function renderCameraMonitorStatus(label, ok, message) {
+  setPill(elements.cameraMonitorStatus, ok, label);
+  if (elements.cameraStatusMessage) {
+    elements.cameraStatusMessage.textContent = message;
+  }
+}
+
+function resetCameraSummary() {
+  state.cameraMonitor.summary = {
+    facePresentMilliseconds: 0,
+    faceAbsentMilliseconds: 0,
+    multipleFacesMilliseconds: 0,
+    longestFaceAbsenceMilliseconds: 0,
+    absenceCount: 0,
+    multipleFacesDetectedCount: 0,
+  };
+}
+
+function updateCameraSummaryDurations(nextStatus, now) {
+  const previousStatus = state.cameraMonitor.status;
+  const previousObservedAt = state.cameraMonitor.lastObservedAt;
+  if (previousObservedAt !== null) {
+    const elapsed = Math.max(0, now - previousObservedAt);
+    if (previousStatus === "face_present") {
+      state.cameraMonitor.summary.facePresentMilliseconds += elapsed;
+    } else if (previousStatus === "face_absent") {
+      state.cameraMonitor.summary.faceAbsentMilliseconds += elapsed;
+    } else if (previousStatus === "multiple_faces") {
+      state.cameraMonitor.summary.multipleFacesMilliseconds += elapsed;
+      state.cameraMonitor.summary.facePresentMilliseconds += elapsed;
+    }
+  }
+  state.cameraMonitor.status = nextStatus;
+  state.cameraMonitor.lastObservedAt = now;
+}
+
+async function startCameraMonitor() {
+  if (!state.cameraMonitor.supported) {
+    renderCameraMonitorStatus("測試模式", true, "此瀏覽器不能開啟鏡頭；請用下方測試按鈕送出鏡頭風險訊號。");
+    return;
+  }
+  if (!state.sessionId) {
+    renderCameraMonitorStatus("待 Session", false, "請先開始學習 Session，再啟用鏡頭偵測。");
+    return;
+  }
+  if (state.cameraMonitor.enabled) {
+    renderCameraMonitorStatus("監測中", true, "鏡頭偵測已在執行中。");
+    return;
+  }
+
+  try {
+    renderCameraMonitorStatus(
+      "啟用中",
+      true,
+      state.cameraMonitor.nativeFaceDetectorSupported
+        ? "正在啟用鏡頭與原生 FaceDetector。"
+        : "正在啟用鏡頭並載入 MediaPipe Face Detector。"
+    );
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 360 } },
+      audio: false,
+    });
+    elements.cameraPreview.srcObject = stream;
+    await elements.cameraPreview.play();
+    state.cameraMonitor.stream = stream;
+    const { detector, detectorName, detectorEngine } = await createCameraDetector();
+
+    state.cameraMonitor.enabled = true;
+    state.cameraMonitor.detector = detector;
+    state.cameraMonitor.detectorName = detectorName;
+    state.cameraMonitor.detectorEngine = detectorEngine;
+    state.cameraMonitor.status = "idle";
+    state.cameraMonitor.lastObservedAt = Date.now();
+    state.cameraMonitor.currentAbsenceStartedAt = null;
+    resetCameraSummary();
+    await emitCameraMonitorLifecycleEvent("camera_monitor_started");
+    state.cameraMonitor.intervalId = window.setInterval(() => {
+      runCameraDetectionCycle().catch(handleError);
+    }, CAMERA_DETECTION_INTERVAL_MS);
+
+    renderCameraMonitorStatus("監測中", true, "鏡頭已啟用，正在本地偵測單人、離開畫面與多人狀態。");
+    renderQuiz();
+    await runCameraDetectionCycle();
+  } catch (error) {
+    await stopCameraStreamOnly();
+    elements.cameraPanel?.classList.add("is-test-mode");
+    renderCameraMonitorStatus(
+      "啟用失敗",
+      false,
+      `鏡頭啟用失敗：${error.message || "請確認瀏覽器權限、localhost/HTTPS、CDN 或網路連線。"}`
+    );
+  }
+}
+
+async function emitCameraMonitorLifecycleEvent(eventType) {
+  if (!state.sessionId || state.sessionCompleted) {
+    return;
+  }
+  await sendEvent(eventType, {
+    detector_name: state.cameraMonitor.detectorName,
+    detector_engine: state.cameraMonitor.detectorEngine,
+    source: "learner_camera_monitor",
+    status: state.cameraMonitor.status,
+  });
+}
+
+async function createCameraDetector() {
+  if (state.cameraMonitor.nativeFaceDetectorSupported) {
+    return {
+      detector: new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 }),
+      detectorName: "FaceDetector",
+      detectorEngine: "native",
+    };
+  }
+
+  let mediaPipe;
+  try {
+    mediaPipe = await import(MEDIAPIPE_VISION_BUNDLE_URL);
+  } catch (error) {
+    throw new Error(`MediaPipe module 載入失敗：${error.message || MEDIAPIPE_VISION_BUNDLE_URL}`);
+  }
+  if (!mediaPipe.FilesetResolver || !mediaPipe.FaceDetector) {
+    throw new Error("MediaPipe module 已載入，但找不到 FilesetResolver 或 FaceDetector");
+  }
+
+  let vision;
+  try {
+    vision = await mediaPipe.FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_ROOT_URL);
+  } catch (error) {
+    throw new Error(`MediaPipe WASM 載入失敗：${error.message || MEDIAPIPE_WASM_ROOT_URL}`);
+  }
+
+  let detector;
+  try {
+    detector = await mediaPipe.FaceDetector.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: MEDIAPIPE_FACE_MODEL_URL,
+      },
+      runningMode: "VIDEO",
+      minDetectionConfidence: 0.5,
+    });
+  } catch (error) {
+    throw new Error(`MediaPipe 人臉模型載入失敗：${error.message || MEDIAPIPE_FACE_MODEL_URL}`);
+  }
+  return {
+    detector,
+    detectorName: "MediaPipe Face Detector",
+    detectorEngine: "mediapipe",
+  };
+}
+
+async function stopCameraStreamOnly() {
+  if (state.cameraMonitor.stream) {
+    state.cameraMonitor.stream.getTracks().forEach((track) => track.stop());
+  }
+  if (elements.cameraPreview) {
+    elements.cameraPreview.srcObject = null;
+  }
+}
+
+async function sendCameraTestSummary(kind) {
+  if (!state.sessionId) {
+    throw new Error("請先建立 Session");
+  }
+  if (state.sessionCompleted) {
+    throw new Error("Session 已完成，請重新開始一筆 Session 再送測試訊號");
+  }
+
+  const payload =
+    kind === "multiple_faces"
+      ? {
+          face_present_seconds: 40,
+          face_absent_seconds: 0,
+          longest_face_absence_seconds: 0,
+          absence_count: 0,
+          multiple_faces_seconds: 12,
+          multiple_faces_detected_count: 1,
+          detector_name: "manual_test_fallback",
+          source: "learner_camera_test_mode",
+        }
+      : {
+          face_present_seconds: 10,
+          face_absent_seconds: 70,
+          longest_face_absence_seconds: 30,
+          absence_count: 1,
+          multiple_faces_seconds: 0,
+          multiple_faces_detected_count: 0,
+          detector_name: "manual_test_fallback",
+          source: "learner_camera_test_mode",
+        };
+
+  await sendEvent("camera_monitor_summary", payload);
+  renderCameraMonitorStatus(
+    "測試已送出",
+    false,
+    kind === "multiple_faces"
+      ? "已送出多人出現測試訊號；完成 Session 後會觸發多人風險規則。"
+      : "已送出離開畫面測試訊號；完成 Session 後會觸發離開畫面風險規則。"
+  );
+}
+
+async function stopCameraMonitor() {
+  if (state.cameraMonitor.enabled && state.sessionId) {
+    await flushCameraMonitorSummary();
+    await emitCameraMonitorLifecycleEvent("camera_monitor_stopped");
+  }
+  if (state.cameraMonitor.intervalId) {
+    window.clearInterval(state.cameraMonitor.intervalId);
+  }
+  if (state.cameraMonitor.stream) {
+    state.cameraMonitor.stream.getTracks().forEach((track) => track.stop());
+  }
+  state.cameraMonitor = {
+    ...createCameraMonitorState(),
+    supported: state.cameraMonitor.supported,
+    nativeFaceDetectorSupported: state.cameraMonitor.nativeFaceDetectorSupported,
+    detectorName: state.cameraMonitor.detectorName,
+    detectorEngine: state.cameraMonitor.detectorEngine,
+  };
+  if (elements.cameraPreview) {
+    elements.cameraPreview.srcObject = null;
+  }
+  renderCameraMonitorStatus(
+    state.cameraMonitor.supported ? "已停止" : "不支援",
+    true,
+    state.cameraMonitor.supported
+      ? "鏡頭監測已停止。重新啟用後才會繼續蒐集 presence 訊號。"
+      : "目前瀏覽器不能開啟鏡頭。"
+  );
+  renderQuiz();
+}
+
+function buildCameraSummaryPayload() {
+  const now = Date.now();
+  updateCameraSummaryDurations(state.cameraMonitor.status, now);
+  if (state.cameraMonitor.currentAbsenceStartedAt !== null) {
+    state.cameraMonitor.summary.longestFaceAbsenceMilliseconds = Math.max(
+      state.cameraMonitor.summary.longestFaceAbsenceMilliseconds,
+      now - state.cameraMonitor.currentAbsenceStartedAt
+    );
+  }
+  return {
+    face_present_seconds: Math.round(state.cameraMonitor.summary.facePresentMilliseconds / 1000),
+    face_absent_seconds: Math.round(state.cameraMonitor.summary.faceAbsentMilliseconds / 1000),
+    longest_face_absence_seconds: Math.round(state.cameraMonitor.summary.longestFaceAbsenceMilliseconds / 1000),
+    absence_count: state.cameraMonitor.summary.absenceCount,
+    multiple_faces_seconds: Math.round(state.cameraMonitor.summary.multipleFacesMilliseconds / 1000),
+    multiple_faces_detected_count: state.cameraMonitor.summary.multipleFacesDetectedCount,
+    detector_name: state.cameraMonitor.detectorName,
+    source: "learner_camera_monitor",
+  };
+}
+
+async function flushCameraMonitorSummary() {
+  if (!state.cameraMonitor.enabled || !state.sessionId) {
+    return;
+  }
+  const payload = buildCameraSummaryPayload();
+  await sendEvent("camera_monitor_summary", payload);
+  resetCameraSummary();
+  state.cameraMonitor.lastObservedAt = Date.now();
+  logEvent("camera_monitor_summary_flushed", JSON.stringify(payload));
+}
+
+async function emitCameraStatusEvent(eventType, facesDetected, absenceDurationSeconds = 0) {
+  if (!state.sessionId || state.sessionCompleted) {
+    return;
+  }
+  const payload = {
+    faces_detected: facesDetected,
+    detector_name: state.cameraMonitor.detectorName,
+    source: "learner_camera_monitor",
+  };
+  if (eventType === "face_presence") {
+    payload.absence_duration_seconds = Math.max(0, absenceDurationSeconds);
+  }
+  await sendEvent(eventType, payload);
+}
+
+async function runCameraDetectionCycle() {
+  if (
+    !state.cameraMonitor.enabled ||
+    !state.cameraMonitor.detector ||
+    state.cameraMonitor.detecting ||
+    !elements.cameraPreview ||
+    elements.cameraPreview.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+  ) {
+    return;
+  }
+
+  state.cameraMonitor.detecting = true;
+  try {
+    const faces = await detectFacesFromVideo();
+    const faceCount = Array.isArray(faces) ? faces.length : 0;
+    const now = Date.now();
+    let nextStatus = "face_absent";
+    let eventToEmit = null;
+    let absenceDurationSeconds = 0;
+
+    if (faceCount > 1) {
+      nextStatus = "multiple_faces";
+      if (state.cameraMonitor.status !== "multiple_faces") {
+        state.cameraMonitor.summary.multipleFacesDetectedCount += 1;
+        eventToEmit = "multiple_faces_detected";
+        if (state.cameraMonitor.currentAbsenceStartedAt !== null) {
+          const absenceDuration = now - state.cameraMonitor.currentAbsenceStartedAt;
+          state.cameraMonitor.summary.longestFaceAbsenceMilliseconds = Math.max(
+            state.cameraMonitor.summary.longestFaceAbsenceMilliseconds,
+            absenceDuration
+          );
+          absenceDurationSeconds = Math.round(absenceDuration / 1000);
+          state.cameraMonitor.currentAbsenceStartedAt = null;
+        }
+      }
+    } else if (faceCount === 1) {
+      nextStatus = "face_present";
+      if (state.cameraMonitor.status !== "face_present") {
+        eventToEmit = "face_presence";
+        if (state.cameraMonitor.currentAbsenceStartedAt !== null) {
+          const absenceDuration = now - state.cameraMonitor.currentAbsenceStartedAt;
+          state.cameraMonitor.summary.longestFaceAbsenceMilliseconds = Math.max(
+            state.cameraMonitor.summary.longestFaceAbsenceMilliseconds,
+            absenceDuration
+          );
+          absenceDurationSeconds = Math.round(absenceDuration / 1000);
+          state.cameraMonitor.currentAbsenceStartedAt = null;
+        }
+      }
+    } else if (state.cameraMonitor.status !== "face_absent") {
+      nextStatus = "face_absent";
+      state.cameraMonitor.summary.absenceCount += 1;
+      state.cameraMonitor.currentAbsenceStartedAt = now;
+      eventToEmit = "face_absence";
+    }
+
+    updateCameraSummaryDurations(nextStatus, now);
+    if (eventToEmit) {
+      await emitCameraStatusEvent(eventToEmit, faceCount, absenceDurationSeconds);
+    }
+
+    if (faceCount > 1) {
+      renderCameraMonitorStatus("多人", false, `目前偵測到 ${faceCount} 張臉，完成 Session 後會列入風險規則。`);
+    } else if (faceCount === 1) {
+      renderCameraMonitorStatus("單人", true, "目前偵測到單一人臉，鏡頭 presence 監測正常。");
+    } else {
+      renderCameraMonitorStatus("離開畫面", false, "目前未偵測到人臉，系統會累積離開畫面時長。");
+    }
+  } catch (error) {
+    renderCameraMonitorStatus("偵測失敗", false, `鏡頭偵測失敗：${error.message || "無法分析目前畫面。"}`);
+  } finally {
+    state.cameraMonitor.detecting = false;
+  }
+}
+
+async function detectFacesFromVideo() {
+  if (state.cameraMonitor.detectorEngine === "mediapipe") {
+    const result = state.cameraMonitor.detector.detectForVideo(elements.cameraPreview, performance.now());
+    return result?.detections || [];
+  }
+  return state.cameraMonitor.detector.detect(elements.cameraPreview);
+}
+
 function showCompletionModal() {
   elements.completionModal.hidden = false;
   elements.completionConfirmButton.focus();
@@ -738,6 +1175,9 @@ async function submitQuiz() {
   if (!state.sessionId) {
     throw new Error("請先建立 Session");
   }
+  if (!state.cameraMonitor.enabled) {
+    throw new Error("請先啟用鏡頭偵測，才能進行並送出測驗");
+  }
 
   elements.submitButton.disabled = true;
   finalizePageTracking();
@@ -754,6 +1194,11 @@ async function submitQuiz() {
     ...buildInputEvidence(),
   });
 
+  await flushCameraMonitorSummary();
+  if (state.cameraMonitor.enabled) {
+    await emitCameraMonitorLifecycleEvent("camera_monitor_stopped");
+  }
+
   const completion = await sendEvent("session_completed", {
     source: "learner_simulator",
     ...calculateQuizResultEvidence(),
@@ -762,10 +1207,32 @@ async function submitQuiz() {
     ...buildInputEvidence(),
   });
 
+  state.sessionCompleted = true;
+  stopCameraMonitorAfterCompletion();
   setPill(elements.sessionChip, true, "Session 已完成");
   renderCompletion(completion.generated_flags || []);
   await loadLeaderboard();
   showCompletionModal();
+}
+
+function stopCameraMonitorAfterCompletion() {
+  if (state.cameraMonitor.intervalId) {
+    window.clearInterval(state.cameraMonitor.intervalId);
+  }
+  if (state.cameraMonitor.stream) {
+    state.cameraMonitor.stream.getTracks().forEach((track) => track.stop());
+  }
+  state.cameraMonitor = {
+    ...createCameraMonitorState(),
+    supported: state.cameraMonitor.supported,
+    nativeFaceDetectorSupported: state.cameraMonitor.nativeFaceDetectorSupported,
+    detectorName: state.cameraMonitor.detectorName,
+    detectorEngine: state.cameraMonitor.detectorEngine,
+  };
+  if (elements.cameraPreview) {
+    elements.cameraPreview.srcObject = null;
+  }
+  renderCameraMonitorStatus("已停止", true, "Session 已完成，鏡頭監測已停止。");
 }
 
 function renderCompletion(flags) {
@@ -820,6 +1287,10 @@ function bindEvents() {
   elements.course.addEventListener("change", () => loadLeaderboard().catch(handleError));
   elements.submitButton.addEventListener("click", () => submitQuiz().catch(handleError));
   elements.completionConfirmButton.addEventListener("click", closeCompletionModal);
+  elements.cameraStartButton?.addEventListener("click", () => startCameraMonitor().catch(handleError));
+  elements.cameraStopButton?.addEventListener("click", () => stopCameraMonitor().catch(handleError));
+  elements.cameraTestAbsenceButton?.addEventListener("click", () => sendCameraTestSummary("face_absence").catch(handleError));
+  elements.cameraTestMultipleButton?.addEventListener("click", () => sendCameraTestSummary("multiple_faces").catch(handleError));
   document.addEventListener("mousemove", () => {
     if (!state.sessionId) {
       return;
@@ -851,11 +1322,17 @@ function bindEvents() {
   document.addEventListener("visibilitychange", () => {
     handleVisibilityChange().catch(handleError);
   });
+  window.addEventListener("beforeunload", () => {
+    if (state.cameraMonitor.stream) {
+      state.cameraMonitor.stream.getTracks().forEach((track) => track.stop());
+    }
+  });
 }
 
 resetSessionState();
 renderCards();
 renderQuiz();
 bindEvents();
+detectCameraSupport();
 loadHealth();
 loadLeaderboard().catch(handleError);

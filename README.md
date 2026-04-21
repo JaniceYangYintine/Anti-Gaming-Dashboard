@@ -13,6 +13,13 @@
 5. 主管在 dashboard 查看 Risk Inbox、Flag Detail、Timeline、Audit Trail。
 6. 主管審核後寫入 `compliance_audit_log`，稽核紀錄不可更新、刪除或 truncate。
 
+## 2026-04-21 更新紀錄
+- 已完成 email 通知雛形：主管審核選擇「作廢重修」時寄送重修通知；選擇「通報 HR」時寄送高度作弊嫌疑調查通知；「誤判核准」不寄信。
+- 已完成 Gmail SMTP 實寄驗證：需使用 Google app password；後端會自動移除 app password 中的空白，避免複製四組字串時登入失敗。
+- Dashboard 主管審核送出後，按鈕旁會顯示綠框「審核已送出」，並更新 `app.js` 版本避免瀏覽器載入舊快取。
+- 已完成學員頁鏡頭 presence 偵測：支援人臉存在、離開畫面、多人出現摘要，並在完成 session 前送出 `camera_monitor_summary`。
+- 瀏覽器原生 `FaceDetector` 不可用時，前端會改用 MediaPipe Face Detector CDN fallback；若 CDN/WASM/model 不可用，仍保留測試模式按鈕驗證後端規則。
+
 ## 技術架構
 - Frontend: 原生 `HTML + CSS + JavaScript`
 - Backend: `Python FastAPI`
@@ -25,7 +32,8 @@
 - 可建立真實 `learning_sessions`。
 - 可產生 `session_started`、`card_swiped`、`answer_changed`、`quiz_submitted`、`session_completed` 等事件。
 - 會將改答紀錄、答錯題數、首次作答時間、頁面停留與輸入活動摘要寫入 metadata。
-- 會從後端同步所選業務員/課程的既有懲罰狀態，因此例如張雅婷 AML 若已被高風險標記，會顯示 Streak Shield 鎖定與模組凍結。
+- 可啟用鏡頭 presence 偵測，寫入 `face_presence`、`face_absence`、`multiple_faces_detected` 與 `camera_monitor_summary`。
+- 會從後端同步所選業務員/課程的既有懲罰狀態；例如 seed demo 中 `A1028｜陳冠宇` 的 AML session 若已被高風險標記，會顯示 Streak Shield 鎖定與模組凍結。
 
 ### Supervisor Dashboard
 - 路徑：`frontend/index.html`
@@ -42,10 +50,11 @@
 - `REPEATED_ANSWER_CHANGES`：同一題改答達 10 次以上，列為中風險。
 - `LOW_INPUT_ACTIVITY`：停留超過 10 分鐘但沒有足夠作答/輸入活動，列為中風險。
 - `LOW_PAGE_FOCUS_RATIO`：頁面焦點比例低於 60% 或切離頁面次數過多，列為高風險。
+- `LONG_FACE_ABSENCE`：鏡頭偵測離開畫面總時長或單次離開過久，列為高風險。
+- `MULTIPLE_FACES_PRESENT`：鏡頭偵測多人出現在畫面，列為高風險。
 
 已停用：
 - `EXCESSIVE_CONTEXT_SWITCH`：保留在資料庫作歷史/demo 參考，目前不作為 active rule。
-- `LONG_FACE_ABSENCE`、`MULTIPLE_FACES_PRESENT`：鏡頭/畫面偵測規則已停用，dashboard 也已移除相關規則說明與 Session Detail 區塊。
 
 ## 風險等級與懲罰
 - 低風險：保留積分與模組完成資格，僅提醒主管追蹤。
@@ -57,7 +66,13 @@
 - `voided`：作廢重修；保留 audit log。
 - `escalated_to_hr`：通報 HR；保留 audit log。
 
-目前不會發送 email 通知。
+若設定 SMTP 與收件人，系統會在主管審核後依處理動作發送 email 通知；未設定時會略過寄信，不影響審核與 audit log。
+
+## 鏡頭偵測與 Email 設定
+- 學員頁 `frontend/learner.html` 可啟用鏡頭 presence 偵測；偵測在瀏覽器本機執行，只送出人臉存在、離開畫面與多人出現的統計事件，不上傳影像。
+- 鏡頭偵測會優先使用瀏覽器原生 `FaceDetector` API；若瀏覽器不支援，會改從 CDN 載入 MediaPipe Face Detector fallback。若鏡頭、CDN 或模型載入都不可用，仍可用測試模式驗證規則流程。
+- email 通知使用 `.env` 中的 `NOTIFICATION_EMAIL_ENABLED`、`NOTIFICATION_EMAIL_RECIPIENTS`、`AGENT_RETAKE_EMAIL_RECIPIENTS`、`HR_EMAIL_RECIPIENTS`、`SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM_EMAIL`、`SMTP_USE_TLS`。
+- 使用 Gmail SMTP 時，`SMTP_PASSWORD` 必須填 Google app password，不可使用一般 Google 登入密碼；若從 Google 介面複製為四組字串，後端會在登入前自動移除空白。
 
 ## 資料模型摘要
 - `agents`：業務員資料。

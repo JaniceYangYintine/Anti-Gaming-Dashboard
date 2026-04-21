@@ -66,6 +66,56 @@
   margin: 18px 0;
 }
 
+.learner-camera-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 22px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 18px;
+}
+
+.camera-preview-shell {
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(28, 24, 20, 0.08);
+}
+
+.camera-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.camera-actions,
+.camera-test-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.camera-test-actions {
+  display: none;
+}
+
+.learner-camera-panel.is-test-mode .camera-test-actions {
+  display: grid;
+}
+
+.camera-status-list {
+  display: grid;
+  gap: 8px;
+}
+
+.camera-status-list p {
+  margin: 0;
+  line-height: 1.5;
+}
+
 .reward-card {
   border: 1px solid var(--line);
   border-radius: 22px;

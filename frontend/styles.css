@@ -706,6 +706,15 @@ textarea {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.resolution-submit-status {
+  min-height: 38px;
+}
+
+.resolution-submit-status.is-success {
+  border: 1px solid rgba(34, 121, 83, 0.42);
 }
 
 .current-session {
