@@ -9,5 +9,9 @@ backend/app/models/__pycache__
 backend/app/schemas/__pycache__
 backend/app/services/__pycache__
 backend/app/scripts/__pycache__
+backend/app/ml/__pycache__
 .DS_Store
 backend/.env
+.vercel
+.env*.local
+ anti-gaming-mini/

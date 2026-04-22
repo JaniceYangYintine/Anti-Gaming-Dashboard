@@ -1,0 +1,8 @@
+IF duration_seconds <= 239.5 AND quiz_seconds <= 30.5 THEN prediction=1 positive_rate=1.0 samples=546
+IF duration_seconds <= 239.5 AND quiz_seconds > 30.5 AND duration_seconds <= 67.5 THEN prediction=1 positive_rate=0.6889 samples=45
+IF duration_seconds <= 239.5 AND quiz_seconds > 30.5 AND duration_seconds > 67.5 THEN prediction=1 positive_rate=1.0 samples=176
+IF duration_seconds > 239.5 AND focus_ratio <= 0.7645 AND face_absent_seconds <= 2.5 THEN prediction=1 positive_rate=0.9796 samples=49
+IF duration_seconds > 239.5 AND focus_ratio <= 0.7645 AND face_absent_seconds > 2.5 THEN prediction=1 positive_rate=1.0 samples=367
+IF duration_seconds > 239.5 AND focus_ratio > 0.7645 AND face_absent_seconds <= 27.5 AND total_input_events <= 26.5 THEN prediction=1 positive_rate=0.9269 samples=260
+IF duration_seconds > 239.5 AND focus_ratio > 0.7645 AND face_absent_seconds <= 27.5 AND total_input_events > 26.5 THEN prediction=0 positive_rate=0.0738 samples=1788
+IF duration_seconds > 239.5 AND focus_ratio > 0.7645 AND face_absent_seconds > 27.5 THEN prediction=1 positive_rate=1.0 samples=269

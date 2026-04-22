@@ -1,10 +1,33 @@
 # Manual Test Checklist
 
+## 2026-04-22 更新紀錄
+- 新增正式站檢查步驟，對齊目前 Vercel + Neon 環境。
+- Dashboard 與 Learner health check 已改為同網域 `/health`，線上不再需要額外改碼。
+
+## 2026-04-23 更新紀錄
+- 新增 ML 輔助規則檢查：`LOGISTIC_REGRESSION_RISK` 與 `DECISION_TREE_RISK` 應出現在中風險規則。
+- 測試時需確認系統敘事為「規則式主體、機器學習輔助」。
+- ML 命中的 flag 應為 `medium`，不應直接造成高風險鎖定或凍結。
+
 ## 2026-04-21 更新紀錄
 
 - 已恢復鏡頭 presence 偵測與 email 通知測試路徑。
 - Chrome/Safari 若沒有原生 `FaceDetector`，學員頁會改用 MediaPipe Face Detector CDN module；若仍失敗，會保留測試模式按鈕。
 - 鏡頭偵測成功後，完成 Session 可觸發 `LONG_FACE_ABSENCE` 或 `MULTIPLE_FACES_PRESENT`。
+
+## 正式環境快速檢查
+
+1. 開啟 [https://anti-gaming.vercel.app/health](https://anti-gaming.vercel.app/health)。
+2. 確認回傳：
+
+```json
+{"status":"ok","database":"ok"}
+```
+
+3. 開啟 [https://anti-gaming.vercel.app](https://anti-gaming.vercel.app)。
+4. 確認 Dashboard 上方 `Backend API` 與 `Database` 顯示正常。
+5. 開啟 [https://anti-gaming.vercel.app/learner.html](https://anti-gaming.vercel.app/learner.html)。
+6. 若畫面仍顯示舊狀態，先做一次 hard refresh。
 
 ## 0. 環境健康檢查
 
@@ -18,6 +41,15 @@
 3. 開啟前端 server。
 4. 開啟 `http://127.0.0.1:5500/index.html`。若 `5500` 被舊程序占用，可改用 `5501`，目前 CORS 已支援。
 5. 確認 dashboard 上方 Backend API 與 Database 顯示正常。
+
+## 0.1 ML 輔助規則檢查
+
+1. 開啟 dashboard 的「異常規則」區塊。
+2. 確認中風險包含：
+   - `LOGISTIC_REGRESSION_RISK`
+   - `DECISION_TREE_RISK`
+3. 呼叫 `GET /api/v1/rules`，確認兩者的 `severity_level` 都是 `medium`。
+4. 確認簡報口徑為：規則式是主要稽核依據，ML 只負責輔助發現多個弱訊號組合。
 
 ## 1. Learner Simulator：產生真實風險事件
 
@@ -55,8 +87,9 @@
 3. 切到其他分頁或 App，再切回 learner。
 4. 重複多次後送出測驗。
 5. 確認 dashboard 風險摘要或 Risk Inbox 可出現 `LOW_PAGE_FOCUS_RATIO`。
-6. 確認 Session Detail 中仍保留切頁次數與完整 Timeline。
-7. 確認 dashboard 不再顯示「離開測驗畫面歷程」區塊。
+6. 確認 `LOW_PAGE_FOCUS_RATIO` 顯示為高風險，並鎖定 Streak Shield、凍結模組完成資格。
+7. 確認 Session Detail 中仍保留切頁次數與完整 Timeline。
+8. 確認 dashboard 不再顯示「離開測驗畫面歷程」區塊。
 
 ## 4. Timeline 顯示規則
 

@@ -1,0 +1,61 @@
+{
+  "dataset": {
+    "source": "/Users/yintinemacbookair/Desktop/Anti-Gaming/backend/app/ml/data/synthetic_sessions.csv",
+    "kind": "synthetic",
+    "total_rows": 5000,
+    "train_rows": 3500,
+    "validation_rows": 750,
+    "test_rows": 750
+  },
+  "model": {
+    "model_name": "decision_tree_sklearn",
+    "model_version": "sklearn-synthetic-poc-v1",
+    "library": "scikit-learn",
+    "max_depth": 4,
+    "min_samples_leaf": 45,
+    "decision_threshold": 0.5
+  },
+  "train": {
+    "rows": 3500,
+    "accuracy": 0.9526,
+    "precision": 0.9801,
+    "recall": 0.9271,
+    "f1": 0.9529,
+    "log_loss": 0.1634,
+    "confusion_matrix": {
+      "tp": 1678,
+      "fp": 34,
+      "tn": 1656,
+      "fn": 132
+    }
+  },
+  "validation": {
+    "rows": 750,
+    "accuracy": 0.944,
+    "precision": 0.9753,
+    "recall": 0.9149,
+    "f1": 0.9441,
+    "log_loss": 0.2327,
+    "confusion_matrix": {
+      "tp": 355,
+      "fp": 9,
+      "tn": 353,
+      "fn": 33
+    }
+  },
+  "test": {
+    "rows": 750,
+    "accuracy": 0.944,
+    "precision": 0.9806,
+    "recall": 0.9098,
+    "f1": 0.9439,
+    "log_loss": 0.1902,
+    "confusion_matrix": {
+      "tp": 353,
+      "fp": 7,
+      "tn": 355,
+      "fn": 35
+    }
+  },
+  "disclaimer": "This scikit-learn model is trained locally on synthetic data for PoC/demo only. Production still reads the exported JSON artifact and does not need scikit-learn."
+}

@@ -1,0 +1,217 @@
+{
+  "model_name": "decision_tree",
+  "model_version": "synthetic-poc-v1",
+  "feature_names": [
+    "duration_seconds",
+    "quiz_seconds",
+    "quiz_score",
+    "wrong_count",
+    "answer_change_count",
+    "max_answer_changes_per_question",
+    "hidden_count",
+    "focus_ratio",
+    "total_input_events",
+    "active_ratio",
+    "face_absent_seconds",
+    "longest_face_absence_seconds",
+    "absence_count",
+    "multiple_faces_seconds",
+    "multiple_faces_detected_count"
+  ],
+  "decision_threshold": 0.5,
+  "tree": {
+    "type": "node",
+    "depth": 0,
+    "feature": "duration_seconds",
+    "threshold": 233.5,
+    "gini_gain": 0.114798,
+    "samples": 3499,
+    "positive_rate": 0.5173,
+    "left": {
+      "type": "node",
+      "depth": 1,
+      "feature": "quiz_seconds",
+      "threshold": 30.5,
+      "gini_gain": 0.00163,
+      "samples": 734,
+      "positive_rate": 0.9823,
+      "left": {
+        "type": "leaf",
+        "depth": 2,
+        "samples": 530,
+        "positive_rate": 1.0,
+        "prediction": 1
+      },
+      "right": {
+        "type": "node",
+        "depth": 2,
+        "feature": "focus_ratio",
+        "threshold": 0.8165,
+        "gini_gain": 0.023312,
+        "samples": 204,
+        "positive_rate": 0.9363,
+        "left": {
+          "type": "node",
+          "depth": 3,
+          "feature": "max_answer_changes_per_question",
+          "threshold": 2.5,
+          "gini_gain": 0.0002,
+          "samples": 159,
+          "positive_rate": 0.9937,
+          "left": {
+            "type": "leaf",
+            "depth": 4,
+            "samples": 45,
+            "positive_rate": 0.9778,
+            "prediction": 1
+          },
+          "right": {
+            "type": "leaf",
+            "depth": 4,
+            "samples": 114,
+            "positive_rate": 1.0,
+            "prediction": 1
+          }
+        },
+        "right": {
+          "type": "leaf",
+          "depth": 3,
+          "samples": 45,
+          "positive_rate": 0.7333,
+          "prediction": 1
+        }
+      }
+    },
+    "right": {
+      "type": "node",
+      "depth": 1,
+      "feature": "focus_ratio",
+      "threshold": 0.7645,
+      "gini_gain": 0.135404,
+      "samples": 2765,
+      "positive_rate": 0.3939,
+      "left": {
+        "type": "node",
+        "depth": 2,
+        "feature": "face_absent_seconds",
+        "threshold": 2.5,
+        "gini_gain": 6.9e-05,
+        "samples": 433,
+        "positive_rate": 0.9977,
+        "left": {
+          "type": "leaf",
+          "depth": 3,
+          "samples": 58,
+          "positive_rate": 0.9828,
+          "prediction": 1
+        },
+        "right": {
+          "type": "leaf",
+          "depth": 3,
+          "samples": 375,
+          "positive_rate": 1.0,
+          "prediction": 1
+        }
+      },
+      "right": {
+        "type": "node",
+        "depth": 2,
+        "feature": "face_absent_seconds",
+        "threshold": 27.5,
+        "gini_gain": 0.128915,
+        "samples": 2332,
+        "positive_rate": 0.2817,
+        "left": {
+          "type": "node",
+          "depth": 3,
+          "feature": "total_input_events",
+          "threshold": 26.5,
+          "gini_gain": 0.158899,
+          "samples": 2073,
+          "positive_rate": 0.192,
+          "left": {
+            "type": "leaf",
+            "depth": 4,
+            "samples": 269,
+            "positive_rate": 0.9219,
+            "prediction": 1
+          },
+          "right": {
+            "type": "leaf",
+            "depth": 4,
+            "samples": 1804,
+            "positive_rate": 0.0831,
+            "prediction": 0
+          }
+        },
+        "right": {
+          "type": "leaf",
+          "depth": 3,
+          "samples": 259,
+          "positive_rate": 1.0,
+          "prediction": 1
+        }
+      }
+    }
+  },
+  "metrics": {
+    "dataset": {
+      "source": "/Users/yintinemacbookair/Desktop/Anti-Gaming/backend/app/ml/data/synthetic_sessions.csv",
+      "kind": "synthetic",
+      "total_rows": 5000,
+      "train_rows": 3499,
+      "validation_rows": 750,
+      "test_rows": 751
+    },
+    "model": {
+      "model_name": "decision_tree",
+      "model_version": "synthetic-poc-v1",
+      "max_depth": 4,
+      "min_samples_leaf": 45,
+      "decision_threshold": 0.5
+    },
+    "train": {
+      "rows": 3499,
+      "accuracy": 0.9471,
+      "precision": 0.9794,
+      "recall": 0.9171,
+      "f1": 0.9472,
+      "log_loss": 0.1794,
+      "confusion_matrix": {
+        "tp": 1660,
+        "fp": 35,
+        "tn": 1654,
+        "fn": 150
+      }
+    },
+    "validation": {
+      "rows": 750,
+      "accuracy": 0.9613,
+      "precision": 0.9864,
+      "recall": 0.9381,
+      "f1": 0.9617,
+      "log_loss": 0.1478,
+      "confusion_matrix": {
+        "tp": 364,
+        "fp": 5,
+        "tn": 357,
+        "fn": 24
+      }
+    },
+    "test": {
+      "rows": 751,
+      "accuracy": 0.9521,
+      "precision": 0.9731,
+      "recall": 0.933,
+      "f1": 0.9526,
+      "log_loss": 0.1646,
+      "confusion_matrix": {
+        "tp": 362,
+        "fp": 10,
+        "tn": 353,
+        "fn": 26
+      }
+    },
+    "disclaimer": "This model is trained on synthetic data for PoC/demo only. Production use requires real labeled supervisor review outcomes."
+  }
+}

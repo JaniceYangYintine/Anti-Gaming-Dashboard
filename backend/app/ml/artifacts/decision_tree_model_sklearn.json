@@ -1,0 +1,196 @@
+{
+  "model_name": "decision_tree",
+  "model_version": "sklearn-synthetic-poc-v1",
+  "training_library": "scikit-learn",
+  "feature_names": [
+    "duration_seconds",
+    "quiz_seconds",
+    "quiz_score",
+    "wrong_count",
+    "answer_change_count",
+    "max_answer_changes_per_question",
+    "hidden_count",
+    "focus_ratio",
+    "total_input_events",
+    "active_ratio",
+    "face_absent_seconds",
+    "longest_face_absence_seconds",
+    "absence_count",
+    "multiple_faces_seconds",
+    "multiple_faces_detected_count"
+  ],
+  "decision_threshold": 0.5,
+  "tree": {
+    "type": "node",
+    "depth": 0,
+    "feature": "duration_seconds",
+    "threshold": 239.5,
+    "samples": 3500,
+    "positive_rate": 0.5171,
+    "left": {
+      "type": "node",
+      "depth": 1,
+      "feature": "quiz_seconds",
+      "threshold": 30.5,
+      "samples": 767,
+      "positive_rate": 0.9817,
+      "left": {
+        "type": "leaf",
+        "depth": 2,
+        "samples": 546,
+        "positive_rate": 1.0,
+        "prediction": 1
+      },
+      "right": {
+        "type": "node",
+        "depth": 2,
+        "feature": "duration_seconds",
+        "threshold": 67.5,
+        "samples": 221,
+        "positive_rate": 0.9367,
+        "left": {
+          "type": "leaf",
+          "depth": 3,
+          "samples": 45,
+          "positive_rate": 0.6889,
+          "prediction": 1
+        },
+        "right": {
+          "type": "leaf",
+          "depth": 3,
+          "samples": 176,
+          "positive_rate": 1.0,
+          "prediction": 1
+        }
+      }
+    },
+    "right": {
+      "type": "node",
+      "depth": 1,
+      "feature": "focus_ratio",
+      "threshold": 0.7645,
+      "samples": 2733,
+      "positive_rate": 0.3868,
+      "left": {
+        "type": "node",
+        "depth": 2,
+        "feature": "face_absent_seconds",
+        "threshold": 2.5,
+        "samples": 416,
+        "positive_rate": 0.9976,
+        "left": {
+          "type": "leaf",
+          "depth": 3,
+          "samples": 49,
+          "positive_rate": 0.9796,
+          "prediction": 1
+        },
+        "right": {
+          "type": "leaf",
+          "depth": 3,
+          "samples": 367,
+          "positive_rate": 1.0,
+          "prediction": 1
+        }
+      },
+      "right": {
+        "type": "node",
+        "depth": 2,
+        "feature": "face_absent_seconds",
+        "threshold": 27.5,
+        "samples": 2317,
+        "positive_rate": 0.2771,
+        "left": {
+          "type": "node",
+          "depth": 3,
+          "feature": "total_input_events",
+          "threshold": 26.5,
+          "samples": 2048,
+          "positive_rate": 0.1821,
+          "left": {
+            "type": "leaf",
+            "depth": 4,
+            "samples": 260,
+            "positive_rate": 0.9269,
+            "prediction": 1
+          },
+          "right": {
+            "type": "leaf",
+            "depth": 4,
+            "samples": 1788,
+            "positive_rate": 0.0738,
+            "prediction": 0
+          }
+        },
+        "right": {
+          "type": "leaf",
+          "depth": 3,
+          "samples": 269,
+          "positive_rate": 1.0,
+          "prediction": 1
+        }
+      }
+    }
+  },
+  "metrics": {
+    "dataset": {
+      "source": "/Users/yintinemacbookair/Desktop/Anti-Gaming/backend/app/ml/data/synthetic_sessions.csv",
+      "kind": "synthetic",
+      "total_rows": 5000,
+      "train_rows": 3500,
+      "validation_rows": 750,
+      "test_rows": 750
+    },
+    "model": {
+      "model_name": "decision_tree_sklearn",
+      "model_version": "sklearn-synthetic-poc-v1",
+      "library": "scikit-learn",
+      "max_depth": 4,
+      "min_samples_leaf": 45,
+      "decision_threshold": 0.5
+    },
+    "train": {
+      "rows": 3500,
+      "accuracy": 0.9526,
+      "precision": 0.9801,
+      "recall": 0.9271,
+      "f1": 0.9529,
+      "log_loss": 0.1634,
+      "confusion_matrix": {
+        "tp": 1678,
+        "fp": 34,
+        "tn": 1656,
+        "fn": 132
+      }
+    },
+    "validation": {
+      "rows": 750,
+      "accuracy": 0.944,
+      "precision": 0.9753,
+      "recall": 0.9149,
+      "f1": 0.9441,
+      "log_loss": 0.2327,
+      "confusion_matrix": {
+        "tp": 355,
+        "fp": 9,
+        "tn": 353,
+        "fn": 33
+      }
+    },
+    "test": {
+      "rows": 750,
+      "accuracy": 0.944,
+      "precision": 0.9806,
+      "recall": 0.9098,
+      "f1": 0.9439,
+      "log_loss": 0.1902,
+      "confusion_matrix": {
+        "tp": 353,
+        "fp": 7,
+        "tn": 355,
+        "fn": 35
+      }
+    },
+    "disclaimer": "This scikit-learn model is trained locally on synthetic data for PoC/demo only. Production still reads the exported JSON artifact and does not need scikit-learn."
+  }
+}

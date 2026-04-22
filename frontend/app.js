@@ -1,4 +1,9 @@
-const API_BASE = "http://localhost:8000/api/v1";
+const DEFAULT_API_BASE =
+  window.location.port === "5500" || window.location.port === "5501"
+    ? "http://localhost:8000/api/v1"
+    : `${window.location.origin}/api/v1`;
+const API_BASE = window.APP_CONFIG?.API_BASE || DEFAULT_API_BASE;
+const HEALTH_URL = `${new URL(API_BASE, window.location.origin).origin}/health`;
 const TELEMETRY_FLUSH_INTERVAL_MS = 15000;
 const ACTIVE_INPUT_GAP_MS = 5000;
 const CAMERA_DETECTION_INTERVAL_MS = 3000;
@@ -67,6 +72,7 @@ const state = {
   sessionSearch: {
     agentId: "",
     courseId: "",
+    applied: false,
   },
   auditLogs: [],
   auditFilters: {
@@ -196,10 +202,12 @@ const statusLabel = {
 
 const ruleCodeLabel = {
   REPEATED_ANSWER_CHANGES: "反覆改答",
+  DECISION_TREE_RISK: "決策樹輔助風險",
   LOW_PAGE_FOCUS_RATIO: "切頁分心",
   BLIND_GUESSING: "盲猜略過",
   IMPOSSIBLE_SPEED: "異常速度",
   LOW_INPUT_ACTIVITY: "低互動掛機",
+  LOGISTIC_REGRESSION_RISK: "邏輯回歸輔助風險",
   LONG_FACE_ABSENCE: "離開畫面過久",
   MULTIPLE_FACES_PRESENT: "多人出現在畫面",
   EXCESSIVE_CONTEXT_SWITCH: "切頁分心",
@@ -1006,9 +1014,11 @@ function renderReadiness() {
         <p class="risk-rule-low"><strong>低風險</strong>：空題過多，作答後仍保留過多未填答案，列為需留意行為</p>
         <p class="risk-rule-medium"><strong>中風險</strong>：反覆改答，同一題改超過 10 次，觸發 <strong>REPEATED_ANSWER_CHANGES</strong></p>
         <p class="risk-rule-medium"><strong>中風險</strong>：低互動掛機，停留超過 10 分鐘未答題，或超過 10 分鐘才開始答題，觸發 <strong>LOW_INPUT_ACTIVITY</strong></p>
+        <p class="risk-rule-medium"><strong>中風險</strong>：邏輯回歸輔助風險，模型整合作答速度、改答、切頁、低互動與鏡頭訊號，超過模型門檻觸發 <strong>LOGISTIC_REGRESSION_RISK</strong></p>
+        <p class="risk-rule-medium"><strong>中風險</strong>：決策樹輔助風險，模型依據合成資料訓練出的可解釋決策路徑判斷，命中觸發 <strong>DECISION_TREE_RISK</strong></p>
         <p class="risk-rule-high"><strong>高風險</strong>：異常速度，30 秒內完成/交卷，並且答錯題數小於以及等於 5 題，觸發 <strong>IMPOSSIBLE_SPEED</strong></p>
         <p class="risk-rule-high"><strong>高風險</strong>：切頁分心，一次 session 切頁超過 5 次，或頁面焦點比例低於 60%，觸發 <strong>LOW_PAGE_FOCUS_RATIO</strong></p>
-        <p class="risk-rule-high"><strong>高風險</strong>：鏡頭離開畫面，離開畫面總時長或單次離開時間超過門檻，觸發 <strong>LONG_FACE_ABSENCE</strong></p>
+        <p class="risk-rule-high"><strong>高風險</strong>：鏡頭離開畫面，離開畫面總時長 &gt; 60 秒或單次離開時間 &gt; 20 秒，觸發 <strong>LONG_FACE_ABSENCE</strong></p>
         <p class="risk-rule-high"><strong>高風險</strong>：鏡頭出現多人，同時偵測到超過一張臉或多人持續時間超過門檻，觸發 <strong>MULTIPLE_FACES_PRESENT</strong></p>
         <p class="risk-rule-high"><strong>高風險</strong>：頁面停留不足，作答過程在題目頁停留時間明顯過短，單獨列為高風險觀察標籤</p>
         <p class="risk-rule-normal"><strong>正常學習</strong>：慢慢看、正常答題、不切頁，應該不產生高風險 flag</p>
@@ -1788,7 +1798,7 @@ function renderDetailError(message) {
 
 async function loadHealth() {
   try {
-    const data = await fetchJson("http://localhost:8000/health");
+    const data = await fetchJson(HEALTH_URL);
     elements.apiHealth.textContent = data.status;
     elements.dbHealth.textContent = data.database;
     state.connectivity.backend = data.status === "ok";
@@ -1831,14 +1841,14 @@ async function loadFlags() {
 
 async function loadRecentSessions() {
   try {
-    const hasFilters = Boolean(state.sessionSearch.agentId || state.sessionSearch.courseId);
+    const hasAppliedSearch = state.sessionSearch.applied;
     const params = new URLSearchParams({
-      limit: hasFilters ? "50" : "3",
+      limit: hasAppliedSearch ? "50" : "3",
     });
-    if (state.sessionSearch.agentId) {
+    if (hasAppliedSearch && state.sessionSearch.agentId) {
       params.set("agent_id", state.sessionSearch.agentId);
     }
-    if (state.sessionSearch.courseId) {
+    if (hasAppliedSearch && state.sessionSearch.courseId) {
       params.set("course_id", state.sessionSearch.courseId);
     }
 
@@ -1853,6 +1863,7 @@ async function loadRecentSessions() {
 function searchRecentSessions() {
   state.sessionSearch.agentId = elements.sessionAgentFilter?.value || "";
   state.sessionSearch.courseId = elements.sessionCourseFilter?.value || "";
+  state.sessionSearch.applied = true;
   closeSessionDetail();
   loadRecentSessions().catch(console.error);
 }
@@ -1860,6 +1871,7 @@ function searchRecentSessions() {
 function refreshRecentSessions() {
   state.sessionSearch.agentId = "";
   state.sessionSearch.courseId = "";
+  state.sessionSearch.applied = false;
   closeSessionDetail();
   loadRecentSessions().catch(console.error);
 }

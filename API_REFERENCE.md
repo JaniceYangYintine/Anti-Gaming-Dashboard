@@ -1,6 +1,14 @@
 # API Reference
 
-本文件整理目前 backend 實際提供的 FastAPI API。預設本機服務位置為：
+本文件整理目前 backend 實際提供的 FastAPI API。
+
+正式環境：
+
+```text
+https://anti-gaming.vercel.app
+```
+
+本機預設服務位置：
 
 ```text
 http://127.0.0.1:8000
@@ -12,6 +20,16 @@ http://127.0.0.1:8000
 http://127.0.0.1:8000/docs
 ```
 
+## 2026-04-22 更新紀錄
+- 正式環境改由 Vercel 提供 FastAPI 與靜態前端，根路徑 `/` 會回傳 dashboard 頁面，不再是 JSON root message。
+- `GET /health` 已同步供 Dashboard 與 Learner 使用；前端改為依目前站台推導 health URL，而非寫死 localhost。
+- Vercel/Neon 環境的 `DATABASE_URL` 若為 `postgresql://...`，後端會自動正規化為 `postgresql+psycopg://...` 再交給 SQLAlchemy。
+
+## 2026-04-23 更新紀錄
+- `GET /api/v1/rules` 會回傳新增的 `LOGISTIC_REGRESSION_RISK` 與 `DECISION_TREE_RISK`。
+- 兩個 ML 輔助規則都屬於 `medium`，不直接產生高風險。
+- 系統定位為規則式主體、機器學習輔助；ML 結果會寫入 `flagged_sessions`，並由主管在 dashboard 審核。
+
 ## 2026-04-21 更新紀錄
 - `POST /api/v1/session-events` 已支援鏡頭 presence 事件與 `camera_monitor_summary`。
 - `POST /api/v1/flags/{flag_id}/resolution` 在 `voided` 或 `escalated_to_hr` 審核成功後，後端可依 SMTP 設定寄送 email 通知；`approved` 不寄信。
@@ -22,18 +40,15 @@ http://127.0.0.1:8000/docs
 
 | Method | Path | 說明 |
 | --- | --- | --- |
-| `GET` | `/` | API root，確認服務有啟動。 |
+| `GET` | `/` | 正式環境回傳 dashboard 頁面。本機若直接跑 backend 且掛載 `frontend/`，也會回傳前端頁面。 |
 | `GET` | `/health` | 檢查 backend 與 database 狀態。 |
 
 ### `GET /`
 
 Response:
 
-```json
-{
-  "message": "Anti-Gaming Compliance API is running",
-  "docs": "/docs"
-}
+```text
+Dashboard HTML page
 ```
 
 ### `GET /health`
@@ -59,6 +74,11 @@ Response:
 | Method | Path | 說明 |
 | --- | --- | --- |
 | `GET` | `/api/v1/rules` | 取得所有合規規則定義。 |
+
+目前規則分工：
+- 規則式主體：`IMPOSSIBLE_SPEED`、`BLIND_GUESSING`、`REPEATED_ANSWER_CHANGES`、`LOW_INPUT_ACTIVITY`、`LOW_PAGE_FOCUS_RATIO`、`LONG_FACE_ABSENCE`、`MULTIPLE_FACES_PRESENT`。
+- `LOW_PAGE_FOCUS_RATIO` 屬於高風險；頁面停留不足或切頁分心會鎖定 Streak Shield，並凍結模組完成資格，待主管審核。
+- ML 輔助：`LOGISTIC_REGRESSION_RISK`、`DECISION_TREE_RISK`，命中時皆列為中風險。
 
 ### `GET /api/v1/rules`
 

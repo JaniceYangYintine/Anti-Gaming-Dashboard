@@ -1,5 +1,19 @@
 # Anti-Gaming 詐欺監控儀表板與合規稽核系統 Todo
 
+## 2026-04-22 完成紀錄
+- [x] 完成正式站部署到 Vercel。
+- [x] 接上 Neon PostgreSQL 並匯入 `schema.sql`。
+- [x] 修正 Vercel entrypoint 與 `backend/app` 套件命名衝突。
+- [x] 修正 Dashboard / Learner health check 線上仍寫死 localhost 的問題。
+
+## 2026-04-23 完成紀錄
+- [x] 確立「規則式為主體、機器學習為輔助」的混合式風險架構。
+- [x] 新增 `LOGISTIC_REGRESSION_RISK` 中風險輔助規則。
+- [x] 新增 `DECISION_TREE_RISK` 中風險輔助規則。
+- [x] 產生 5,000 筆 synthetic dataset，切分 train / validation / test 訓練決策樹 PoC。
+- [x] 新增本機 `scikit-learn` 訓練腳本，並輸出 production 可讀的 JSON artifact。
+- [ ] 未來以真實主管審核結果作為 label，重訓邏輯回歸與決策樹正式模型。
+
 ## 2026-04-21 完成紀錄
 - [x] 回補 email 通知：新增 SMTP 設定與 `NotificationService`，主管審核選擇 `voided` 或 `escalated_to_hr` 後可寄送通知。
 - [x] 完成 Gmail SMTP app password 實寄驗證，並在後端自動移除 app password 空白。

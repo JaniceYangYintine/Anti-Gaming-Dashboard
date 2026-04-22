@@ -8,6 +8,15 @@
 - `learner.js`: 學員事件蒐集、測驗、鏡頭 presence 偵測、MediaPipe fallback 與完成結果顯示。
 - `learner.css`: 學員頁與鏡頭偵測區塊樣式。
 
+## 2026-04-22 更新紀錄
+- Dashboard 與 Learner 的 health check 已改成依 `API_BASE` 推導同網域 `/health`，部署到 Vercel 時不會再誤打 localhost。
+- 正式站目前為 [https://anti-gaming.vercel.app](https://anti-gaming.vercel.app)。
+
+## 2026-04-23 更新紀錄
+- Dashboard 的異常規則中風險區塊新增 `LOGISTIC_REGRESSION_RISK` 與 `DECISION_TREE_RISK`。
+- Learner 完成 session 後若命中 ML 輔助規則，結果會以中風險標籤顯示。
+- 前端只顯示 ML 推論摘要、風險原因、模型版本與決策路徑，不顯示完整 JSON artifact。
+
 ## 2026-04-21 更新紀錄
 - Dashboard 主管審核送出後，按鈕旁會顯示綠框「審核已送出」。
 - `index.html` 會更新 `app.js` query string 版本，避免瀏覽器快取導致審核提示或規則畫面仍是舊版。
@@ -29,6 +38,7 @@ python3 -m http.server 5500
 開啟：
 - Frontend: [http://localhost:5500](http://localhost:5500)
 - Backend API: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Production Frontend: [https://anti-gaming.vercel.app](https://anti-gaming.vercel.app)
 
 若 `5500` 被舊程序占用，可以改用：
 ```bash
@@ -52,3 +62,4 @@ python3 -m http.server 5501
 - 畫面中的成功、錯誤、進行中狀態會以不同顏色提示，方便 demo 時快速判讀
 - scenario 按鈕會直接呼叫既有 API 建立 session 並依序送出事件，不是使用假資料繞過 backend
 - 鏡頭偵測只送出統計 metadata，不上傳攝影機影像。
+- ML 輔助規則在前端只作為中風險提示；高風險仍由明確規則式門檻決定。

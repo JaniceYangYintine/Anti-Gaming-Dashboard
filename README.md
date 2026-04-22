@@ -13,6 +13,18 @@
 5. 主管在 dashboard 查看 Risk Inbox、Flag Detail、Timeline、Audit Trail。
 6. 主管審核後寫入 `compliance_audit_log`，稽核紀錄不可更新、刪除或 truncate。
 
+## 2026-04-22 更新紀錄
+- 專案已完成 Vercel 部署，正式站點為 [https://anti-gaming.vercel.app](https://anti-gaming.vercel.app)。
+- 正式環境目前採 `Vercel Python Runtime + Neon PostgreSQL`，`/health` 已確認回傳 `{"status":"ok","database":"ok"}`。
+- Dashboard 與 Learner 的 health check 已改成依目前站台自動推導，不再寫死 `http://localhost:8000/health`，避免線上誤判「Backend API 無法連線 / Database 未知」。
+- 新增根目錄 `index.py`、`vercel.json` 與 `requirements.txt`，讓 Vercel 可直接載入 FastAPI app。
+
+## 2026-04-23 更新紀錄
+- 新增混合式異常偵測架構：**規則式為主體，機器學習為輔助**。
+- 新增 `LOGISTIC_REGRESSION_RISK`：邏輯回歸形式的輔助風險評分，整合作答速度、改答、切頁、低互動與鏡頭訊號，命中時列為中風險。
+- 新增 `DECISION_TREE_RISK`：決策樹輔助風險，使用 synthetic train / validation / test 資料完成 PoC 訓練，命中時列為中風險。
+- 新增本機訓練腳本 `backend/app/scripts/train_decision_tree_sklearn.py`，可用 `scikit-learn` 在本機訓練決策樹，再輸出 production 可讀的 JSON artifact；正式站不需要安裝 `scikit-learn`。
+
 ## 2026-04-21 更新紀錄
 - 已完成 email 通知雛形：主管審核選擇「作廢重修」時寄送重修通知；選擇「通報 HR」時寄送高度作弊嫌疑調查通知；「誤判核准」不寄信。
 - 已完成 Gmail SMTP 實寄驗證：需使用 Google app password；後端會自動移除 app password 中的空白，避免複製四組字串時登入失敗。
@@ -24,6 +36,17 @@
 - Frontend: 原生 `HTML + CSS + JavaScript`
 - Backend: `Python FastAPI`
 - Database: `PostgreSQL`
+- Production Deployment: `Vercel + Neon PostgreSQL`
+- Optional Deployment Blueprint: `GCP Cloud Run + Cloud SQL`
+- Risk Engine: 規則式偵測為主，邏輯回歸與決策樹做中風險輔助
+
+## 正式環境
+- Dashboard: [https://anti-gaming.vercel.app](https://anti-gaming.vercel.app)
+- Learner Simulator: [https://anti-gaming.vercel.app/learner.html](https://anti-gaming.vercel.app/learner.html)
+- API Docs: [https://anti-gaming.vercel.app/docs](https://anti-gaming.vercel.app/docs)
+- Health: [https://anti-gaming.vercel.app/health](https://anti-gaming.vercel.app/health)
+
+正式環境由 FastAPI 同時提供 API 與 `frontend/` 靜態頁面，資料庫使用 Neon PostgreSQL。即使 Vercel function 重啟，資料仍保存在資料庫中。
 
 ## 前端頁面
 ### Learner Simulator
@@ -49,6 +72,8 @@
 - `BLIND_GUESSING`：30 秒內交卷且答錯超過 8 題，列為低風險。
 - `REPEATED_ANSWER_CHANGES`：同一題改答達 10 次以上，列為中風險。
 - `LOW_INPUT_ACTIVITY`：停留超過 10 分鐘但沒有足夠作答/輸入活動，列為中風險。
+- `LOGISTIC_REGRESSION_RISK`：邏輯回歸形式輔助評分超過門檻，列為中風險。
+- `DECISION_TREE_RISK`：決策樹輔助模型判定可疑，列為中風險。
 - `LOW_PAGE_FOCUS_RATIO`：頁面焦點比例低於 60% 或切離頁面次數過多，列為高風險。
 - `LONG_FACE_ABSENCE`：鏡頭偵測離開畫面總時長或單次離開過久，列為高風險。
 - `MULTIPLE_FACES_PRESENT`：鏡頭偵測多人出現在畫面，列為高風險。
@@ -60,6 +85,15 @@
 - 低風險：保留積分與模組完成資格，僅提醒主管追蹤。
 - 中風險：不累計排行榜積分與本週獎勵，但不鎖定 Streak Shield、不凍結模組完成資格。
 - 高風險：不累計排行榜積分與本週獎勵，鎖定 Streak Shield，凍結模組完成資格，待主管審核。
+
+ML 輔助規則目前只會產生中風險，不會直接升級為高風險；高風險仍保留給明確門檻、可稽核、可追溯的規則式判斷。
+
+## 機器學習輔助定位
+- 規則式引擎是主體：負責明確門檻、合規稽核與主管可追溯證據。
+- 機器學習是輔助：負責捕捉多個弱訊號組合，例如速度偏快、切頁偏多、互動偏低與鏡頭訊號接近門檻。
+- `LOGISTIC_REGRESSION_RISK` 目前是固定係數的邏輯回歸形式輔助評分器，尚未使用真實 train/test 標註資料重訓。
+- `DECISION_TREE_RISK` 目前是 synthetic dataset 訓練出的 PoC 模型，包含 train / validation / test 與 F1 等指標；正式模型仍需未來累積主管審核結果作為 label 後重訓。
+- 決策樹 artifact 會轉成 JSON，讓 Vercel production 只做輕量推論，不需要安裝 `scikit-learn`。
 
 審核結果：
 - `approved`：視為誤判核准；若同 session 沒有其他未核准風險，恢復積分與資格。

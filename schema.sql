@@ -158,7 +158,14 @@ INSERT INTO agents (agent_id, agent_name, branch_name)
 VALUES
   ('A1028', '陳冠宇', '台北信義分行'),
   ('A2041', '林怡君', '新北板橋分行'),
-  ('A3350', '黃品蓉', '桃園中壢分行');
+  ('A3350', '黃品蓉', '桃園中壢分行'),
+  ('A4167', '張雅婷', '新竹竹北分行'),
+  ('A5290', '王柏翰', '台中西屯分行'),
+  ('A6132', '劉家豪', '台南東區分行'),
+  ('A7245', '蔡宜庭', '高雄左營分行'),
+  ('A8361', '吳承恩', '台北內湖分行'),
+  ('A9473', '郭怡萱', '高雄前鎮分行'),
+  ('A0586', '鄭宇翔', '台中豐原分行');
 
 INSERT INTO managers (manager_id, manager_name, department_name)
 VALUES
@@ -203,6 +210,20 @@ VALUES
     'medium'
   ),
   (
+    'LOGISTIC_REGRESSION_RISK',
+    '邏輯回歸輔助風險',
+    '邏輯回歸模型整合作答速度、改答、切頁、低互動與鏡頭訊號，超過模型門檻時列為中風險',
+    '{"threshold": 0.65, "intercept": -2.4, "weights": {"speed_signal": 1.25, "wrong_answer_signal": 0.55, "answer_change_signal": 0.95, "page_focus_signal": 1.05, "low_input_signal": 0.85, "face_absence_signal": 1.15, "multiple_faces_signal": 1.15}}'::jsonb,
+    'medium'
+  ),
+  (
+    'DECISION_TREE_RISK',
+    '決策樹輔助風險',
+    '決策樹 PoC 模型使用 synthetic train/validation/test 資料訓練，輸出可解釋決策路徑；命中時列為中風險',
+    '{"model_name": "decision_tree", "model_version": "synthetic-poc-v1", "dataset_kind": "synthetic", "decision_threshold": 0.5}'::jsonb,
+    'medium'
+  ),
+  (
     'LOW_INPUT_ACTIVITY',
     '低互動掛機',
     '停留超過 10 分鐘未答題，疑似低互動掛機',
@@ -212,14 +233,14 @@ VALUES
   (
     'LOW_PAGE_FOCUS_RATIO',
     '切頁分心',
-    '一次 session 切頁超過 5 次或頁面焦點比例偏低',
+    '一次 session 切頁超過 5 次或頁面焦點比例偏低，列為高風險',
     '{"min_focus_ratio": 0.6, "max_hidden_count": 5}'::jsonb,
     'high'
   ),
   (
     'LONG_FACE_ABSENCE',
     '長時間離開畫面',
-    '鏡頭偵測到學員長時間未出現在畫面中',
+    '鏡頭離開畫面，離開畫面總時長 > 60 秒或單次離開時間 > 20 秒',
     '{"max_face_absent_seconds": 60, "max_longest_face_absence_seconds": 20}'::jsonb,
     'high'
   ),

@@ -6,6 +6,17 @@
 - 連接 PostgreSQL
 - 承接後續規則引擎與 session event 流程
 
+## 2026-04-22 更新紀錄
+- 新增 Vercel production 入口：根目錄 `index.py` + `vercel.json`。
+- `backend/app/main.py` 現在會同時掛載 `frontend/`，因此 production 根路徑 `/` 回傳的是 dashboard 頁面。
+- `backend/app/db/session.py` 會自動把 `postgresql://...` 正規化成 `postgresql+psycopg://...`，用來相容 Neon / Vercel 提供的 `DATABASE_URL`。
+
+## 2026-04-23 更新紀錄
+- 新增 ML 輔助規則：`LOGISTIC_REGRESSION_RISK` 與 `DECISION_TREE_RISK`，兩者都固定列為中風險。
+- 新增 `backend/app/ml/`，集中放 feature extraction、決策樹 JSON artifact 與 production 輕量推論器。
+- 新增 `backend/app/scripts/generate_synthetic_ml_data.py`、`train_decision_tree.py`、`train_decision_tree_sklearn.py`。
+- `scikit-learn` 只用在本機訓練，放在 `requirements-ml.txt`；正式站 `requirements.txt` 不包含 `scikit-learn`。
+
 ## 2026-04-21 更新紀錄
 - 新增 SMTP email 通知設定與 `NotificationService`，主管審核選擇「作廢重修」或「通報 HR」後可寄送通知。
 - 新增鏡頭事件型別驗證：`face_presence`、`face_absence`、`multiple_faces_detected`、`camera_monitor_summary`。
@@ -25,6 +36,14 @@ cp .env.example .env
 說明：
 - 目前這台環境的 `python3` 是 `3.14`
 - backend 依賴在 `3.14` 上安裝不穩，建議明確使用 `python3.13`
+
+## Production 入口
+
+正式環境目前部署在 Vercel：
+- Dashboard: [https://anti-gaming.vercel.app](https://anti-gaming.vercel.app)
+- Learner: [https://anti-gaming.vercel.app/learner.html](https://anti-gaming.vercel.app/learner.html)
+- Docs: [https://anti-gaming.vercel.app/docs](https://anti-gaming.vercel.app/docs)
+- Health: [https://anti-gaming.vercel.app/health](https://anti-gaming.vercel.app/health)
 
 ## Docker Compose 啟動方式
 在專案根目錄執行：
@@ -101,6 +120,23 @@ Gmail 注意事項：
 規則引擎會用 `camera_monitor_summary` 的離開畫面秒數、最長離開秒數、多人秒數與多人次數判斷 `LONG_FACE_ABSENCE` 和 `MULTIPLE_FACES_PRESENT`。
 
 前端會優先使用瀏覽器原生 `FaceDetector`，沒有原生支援時會改用 MediaPipe Face Detector CDN fallback；若 CDN 或模型無法載入，學員頁會顯示測試模式。
+
+## ML 輔助偵測
+本專案採用「規則式為主體、機器學習為輔助」：
+- 規則式負責明確門檻與可稽核高風險，例如異常速度、切頁、頁面停留不足、鏡頭離開與多人出現。
+- `LOGISTIC_REGRESSION_RISK` 使用固定係數的邏輯回歸形式輔助評分，命中時建立中風險 flag。
+- `DECISION_TREE_RISK` 使用決策樹 JSON artifact 推論，命中時建立中風險 flag。
+- `train_decision_tree_sklearn.py` 是本機訓練工具，使用 `scikit-learn DecisionTreeClassifier` 訓練、評估並輸出 JSON，不會在 Vercel runtime 執行。
+
+本機若要重跑 sklearn 訓練：
+
+```bash
+cd backend
+source .venv/bin/activate
+pip install -r ../requirements-ml.txt
+python -m app.scripts.generate_synthetic_ml_data
+python -m app.scripts.train_decision_tree_sklearn
+```
 
 ## 第一階段已建立
 - FastAPI 專案骨架

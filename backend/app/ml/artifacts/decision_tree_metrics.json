@@ -1,0 +1,60 @@
+{
+  "dataset": {
+    "source": "/Users/yintinemacbookair/Desktop/Anti-Gaming/backend/app/ml/data/synthetic_sessions.csv",
+    "kind": "synthetic",
+    "total_rows": 5000,
+    "train_rows": 3499,
+    "validation_rows": 750,
+    "test_rows": 751
+  },
+  "model": {
+    "model_name": "decision_tree",
+    "model_version": "synthetic-poc-v1",
+    "max_depth": 4,
+    "min_samples_leaf": 45,
+    "decision_threshold": 0.5
+  },
+  "train": {
+    "rows": 3499,
+    "accuracy": 0.9471,
+    "precision": 0.9794,
+    "recall": 0.9171,
+    "f1": 0.9472,
+    "log_loss": 0.1794,
+    "confusion_matrix": {
+      "tp": 1660,
+      "fp": 35,
+      "tn": 1654,
+      "fn": 150
+    }
+  },
+  "validation": {
+    "rows": 750,
+    "accuracy": 0.9613,
+    "precision": 0.9864,
+    "recall": 0.9381,
+    "f1": 0.9617,
+    "log_loss": 0.1478,
+    "confusion_matrix": {
+      "tp": 364,
+      "fp": 5,
+      "tn": 357,
+      "fn": 24
+    }
+  },
+  "test": {
+    "rows": 751,
+    "accuracy": 0.9521,
+    "precision": 0.9731,
+    "recall": 0.933,
+    "f1": 0.9526,
+    "log_loss": 0.1646,
+    "confusion_matrix": {
+      "tp": 362,
+      "fp": 10,
+      "tn": 353,
+      "fn": 26
+    }
+  },
+  "disclaimer": "This model is trained on synthetic data for PoC/demo only. Production use requires real labeled supervisor review outcomes."
+}

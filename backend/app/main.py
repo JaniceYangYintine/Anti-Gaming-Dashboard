@@ -1,9 +1,14 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import settings
 
+
+FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 app = FastAPI(
     title=settings.app_name,
@@ -21,10 +26,5 @@ app.add_middleware(
 
 app.include_router(api_router)
 
-
-@app.get("/", tags=["root"])
-def root() -> dict[str, str]:
-    return {
-        "message": "Anti-Gaming Compliance API is running",
-        "docs": "/docs",
-    }
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

@@ -1,4 +1,9 @@
-const API_BASE = "http://localhost:8000/api/v1";
+const DEFAULT_API_BASE =
+  window.location.port === "5500" || window.location.port === "5501"
+    ? "http://localhost:8000/api/v1"
+    : `${window.location.origin}/api/v1`;
+const API_BASE = window.APP_CONFIG?.API_BASE || DEFAULT_API_BASE;
+const HEALTH_URL = `${new URL(API_BASE, window.location.origin).origin}/health`;
 const BASE_MODULE_POINTS = 100;
 const WEEKLY_REVIEW_REWARD_POINTS = 10;
 const CAMERA_DETECTION_INTERVAL_MS = 3000;
@@ -9,10 +14,12 @@ const MEDIAPIPE_FACE_MODEL_URL =
 
 const ruleCodeLabel = {
   REPEATED_ANSWER_CHANGES: "反覆改答",
+  DECISION_TREE_RISK: "決策樹輔助風險",
   LOW_PAGE_FOCUS_RATIO: "切頁分心",
   BLIND_GUESSING: "盲猜略過",
   IMPOSSIBLE_SPEED: "異常速度",
   LOW_INPUT_ACTIVITY: "低互動掛機",
+  LOGISTIC_REGRESSION_RISK: "邏輯回歸輔助風險",
   LONG_FACE_ABSENCE: "離開畫面過久",
   MULTIPLE_FACES_PRESENT: "多人出現在畫面",
   EXCESSIVE_CONTEXT_SWITCH: "切頁分心",
@@ -182,6 +189,7 @@ const elements = {
   health: document.querySelector("#learner-health"),
   agent: document.querySelector("#learner-agent"),
   course: document.querySelector("#learner-course"),
+  courseTitle: document.querySelector("#course-title"),
   startButton: document.querySelector("#start-session-button"),
   lessonCards: document.querySelector("#lesson-cards"),
   quizForm: document.querySelector("#quiz-form"),
@@ -246,6 +254,17 @@ function setFeedback(title, body, variant = "info") {
     <h3>${escapeHtml(title)}</h3>
     <p class="${className}">${escapeHtml(body)}</p>
   `;
+}
+
+function setButtonBusy(button, isBusy, busyLabel = "處理中...") {
+  if (!button) {
+    return;
+  }
+  if (!button.dataset.originalLabel) {
+    button.dataset.originalLabel = button.textContent.trim();
+  }
+  button.disabled = isBusy;
+  button.textContent = isBusy ? busyLabel : button.dataset.originalLabel;
 }
 
 function escapeHtml(value) {
@@ -325,6 +344,35 @@ function renderSelectedAgentTotals(items = []) {
   const selectedAgent = items.find((item) => item.agent_id === elements.agent.value);
   elements.leaderboardPoints.textContent = String(selectedAgent?.leaderboard_points ?? 0);
   elements.weeklyRewardPoints.textContent = String(selectedAgent?.weekly_reward_points ?? 0);
+}
+
+function syncCourseTitle() {
+  const selectedOption = elements.course.selectedOptions?.[0];
+  if (!selectedOption || !elements.courseTitle) {
+    return;
+  }
+  const [courseName] = selectedOption.textContent.split("｜");
+  elements.courseTitle.textContent = courseName || selectedOption.textContent;
+}
+
+function renderFilterOptions(selectElement, items, currentValue) {
+  if (!selectElement || !items?.length) {
+    return;
+  }
+
+  selectElement.innerHTML = items
+    .map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`)
+    .join("");
+
+  const hasCurrentValue = items.some((item) => item.value === currentValue);
+  selectElement.value = hasCurrentValue ? currentValue : items[0].value;
+}
+
+async function loadLearnerCatalog() {
+  const payload = await fetchJson(`${API_BASE}/sessions/recent?limit=1`);
+  renderFilterOptions(elements.agent, payload.agent_options || [], elements.agent.value);
+  renderFilterOptions(elements.course, payload.course_options || [], elements.course.value);
+  syncCourseTitle();
 }
 
 async function loadSelectedLearnerPenaltyStatus() {
@@ -533,32 +581,37 @@ function resetSessionState() {
 }
 
 async function startSession() {
+  setButtonBusy(elements.startButton, true, "建立中...");
   resetSessionState();
   state.startedAt = new Date();
   state.eventCursor = new Date(state.startedAt.getTime());
 
-  const payload = await createSession({
-    agent_id: elements.agent.value,
-    course_id: elements.course.value,
-    started_at: state.startedAt.toISOString(),
-  });
+  try {
+    const payload = await createSession({
+      agent_id: elements.agent.value,
+      course_id: elements.course.value,
+      started_at: state.startedAt.toISOString(),
+    });
 
-  state.sessionId = payload.session_id;
-  state.quizStartedAt = new Date();
-  initializePageTracking();
-  await loadSelectedLearnerPenaltyStatus();
-  setPill(elements.sessionChip, true, "Session 進行中");
-  await sendEvent("session_started", {
-    source: "learner_simulator",
-  });
-  setFeedback(
-    "Session 已建立",
-    "請先按右側「啟用鏡頭」按鈕；鏡頭未啟用前，測驗作答與送出會保持鎖定。",
-    "success"
-  );
-  window.alert("請先按右側「啟用鏡頭」按鈕。鏡頭未啟用前無法進行測驗。");
-  renderCards();
-  renderQuiz();
+    state.sessionId = payload.session_id;
+    state.quizStartedAt = new Date();
+    initializePageTracking();
+    setPill(elements.sessionChip, true, "Session 進行中");
+    renderCards();
+    renderQuiz();
+    setFeedback(
+      "Session 已建立",
+      "請先按右側「啟用鏡頭」按鈕；鏡頭未啟用前，測驗作答與送出會保持鎖定。",
+      "success"
+    );
+
+    loadSelectedLearnerPenaltyStatus().catch(handleError);
+    sendEvent("session_started", {
+      source: "learner_simulator",
+    }).catch(handleError);
+  } finally {
+    setButtonBusy(elements.startButton, false);
+  }
 }
 
 async function markCardRead(cardIndex) {
@@ -568,12 +621,21 @@ async function markCardRead(cardIndex) {
   if (cardIndex <= state.completedCards) {
     return;
   }
-  await sendEvent("card_swiped", {
-    card_index: cardIndex,
-    source: "learner_simulator",
-  });
+
+  const previousCompletedCards = state.completedCards;
   state.completedCards = Math.max(state.completedCards, cardIndex);
   renderCards();
+
+  try {
+    await sendEvent("card_swiped", {
+      card_index: cardIndex,
+      source: "learner_simulator",
+    });
+  } catch (error) {
+    state.completedCards = previousCompletedCards;
+    renderCards();
+    throw error;
+  }
 }
 
 function recordAnswerChange(input) {
@@ -756,16 +818,20 @@ function updateCameraSummaryDurations(nextStatus, now) {
 }
 
 async function startCameraMonitor() {
+  setButtonBusy(elements.cameraStartButton, true, "啟用中...");
   if (!state.cameraMonitor.supported) {
     renderCameraMonitorStatus("測試模式", true, "此瀏覽器不能開啟鏡頭；請用下方測試按鈕送出鏡頭風險訊號。");
+    setButtonBusy(elements.cameraStartButton, false);
     return;
   }
   if (!state.sessionId) {
     renderCameraMonitorStatus("待 Session", false, "請先開始學習 Session，再啟用鏡頭偵測。");
+    setButtonBusy(elements.cameraStartButton, false);
     return;
   }
   if (state.cameraMonitor.enabled) {
     renderCameraMonitorStatus("監測中", true, "鏡頭偵測已在執行中。");
+    setButtonBusy(elements.cameraStartButton, false);
     return;
   }
 
@@ -810,6 +876,8 @@ async function startCameraMonitor() {
       false,
       `鏡頭啟用失敗：${error.message || "請確認瀏覽器權限、localhost/HTTPS、CDN 或網路連線。"}`
     );
+  } finally {
+    setButtonBusy(elements.cameraStartButton, false);
   }
 }
 
@@ -910,7 +978,14 @@ async function sendCameraTestSummary(kind) {
           source: "learner_camera_test_mode",
         };
 
-  await sendEvent("camera_monitor_summary", payload);
+  const targetButton =
+    kind === "multiple_faces" ? elements.cameraTestMultipleButton : elements.cameraTestAbsenceButton;
+  setButtonBusy(targetButton, true, "送出中...");
+  try {
+    await sendEvent("camera_monitor_summary", payload);
+  } finally {
+    setButtonBusy(targetButton, false);
+  }
   renderCameraMonitorStatus(
     "測試已送出",
     false,
@@ -1179,7 +1254,7 @@ async function submitQuiz() {
     throw new Error("請先啟用鏡頭偵測，才能進行並送出測驗");
   }
 
-  elements.submitButton.disabled = true;
+  setButtonBusy(elements.submitButton, true, "送出中...");
   finalizePageTracking();
   const score = calculateScore();
   const quizSeconds = Math.max(1, Math.round((Date.now() - state.quizStartedAt.getTime()) / 1000));
@@ -1213,6 +1288,7 @@ async function submitQuiz() {
   renderCompletion(completion.generated_flags || []);
   await loadLeaderboard();
   showCompletionModal();
+  setButtonBusy(elements.submitButton, false);
 }
 
 function stopCameraMonitorAfterCompletion() {
@@ -1267,13 +1343,17 @@ function renderCompletion(flags) {
 }
 
 function handleError(error) {
-  elements.submitButton.disabled = false;
+  setButtonBusy(elements.startButton, false);
+  setButtonBusy(elements.submitButton, false);
+  setButtonBusy(elements.cameraStartButton, false);
+  setButtonBusy(elements.cameraTestAbsenceButton, false);
+  setButtonBusy(elements.cameraTestMultipleButton, false);
   setFeedback("操作失敗", formatApiDetail(error?.message) || "請確認 backend API 已啟動並可連線。", "error");
 }
 
 async function loadHealth() {
   try {
-    const payload = await fetchJson("http://localhost:8000/health");
+    const payload = await fetchJson(HEALTH_URL);
     const ok = payload.status === "ok" && payload.database === "ok";
     setPill(elements.health, ok, ok ? "API / DB 正常" : "API 異常");
   } catch (error) {
@@ -1284,7 +1364,10 @@ async function loadHealth() {
 function bindEvents() {
   elements.startButton.addEventListener("click", () => startSession().catch(handleError));
   elements.agent.addEventListener("change", () => loadLeaderboard().catch(handleError));
-  elements.course.addEventListener("change", () => loadLeaderboard().catch(handleError));
+  elements.course.addEventListener("change", () => {
+    syncCourseTitle();
+    loadLeaderboard().catch(handleError);
+  });
   elements.submitButton.addEventListener("click", () => submitQuiz().catch(handleError));
   elements.completionConfirmButton.addEventListener("click", closeCompletionModal);
   elements.cameraStartButton?.addEventListener("click", () => startCameraMonitor().catch(handleError));
@@ -1335,4 +1418,6 @@ renderQuiz();
 bindEvents();
 detectCameraSupport();
 loadHealth();
-loadLeaderboard().catch(handleError);
+loadLearnerCatalog()
+  .then(() => loadLeaderboard())
+  .catch(handleError);

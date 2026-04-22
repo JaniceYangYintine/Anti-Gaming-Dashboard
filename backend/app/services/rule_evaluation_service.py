@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
+from math import exp
 from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+from app.ml.decision_tree import predict_decision_tree_risk
 
 
 BASE_MODULE_POINTS = 100
@@ -410,7 +413,149 @@ class RuleEvaluationService:
                 }
             return None
 
+        if rule_code == "LOGISTIC_REGRESSION_RISK":
+            prediction = RuleEvaluationService._predict_logistic_regression_risk(
+                params=params,
+                session_row=session_row,
+                event_metrics=event_metrics,
+            )
+            if prediction["risk_score"] >= prediction["threshold"]:
+                top_factors = "、".join(prediction["top_factors"][:3])
+                return {
+                    "risk_reason": (
+                        f"邏輯回歸輔助模型判定中風險，ML risk score "
+                        f"{prediction['risk_score']:.2f}，高於門檻 {prediction['threshold']:.2f}。"
+                        f"主要影響因素：{top_factors}。"
+                    )
+                }
+            return None
+
+        if rule_code == "DECISION_TREE_RISK":
+            prediction = predict_decision_tree_risk(
+                session_row=session_row,
+                event_metrics=event_metrics,
+            )
+            if prediction is None:
+                return None
+            if prediction["prediction"] == 1:
+                path_text = "；".join(
+                    (
+                        f"{step['feature']} {step['operator']} {step['threshold']}"
+                        f"（目前 {step['value']:.2f}）"
+                    )
+                    for step in prediction["decision_path"][:4]
+                )
+                return {
+                    "risk_reason": (
+                        f"決策樹 PoC 模型判定中風險，risk score {prediction['risk_score']:.2f}，"
+                        f"模型版本 {prediction['model_version']}。決策路徑：{path_text}。"
+                    )
+                }
+            return None
+
         return None
+
+    @staticmethod
+    def _predict_logistic_regression_risk(params: dict, session_row: dict, event_metrics: dict) -> dict:
+        duration_seconds = session_row["duration_seconds"] or 0
+        expected_duration_seconds = session_row["expected_duration_seconds"] or 0
+        quiz_seconds = session_row["quiz_seconds"] or 0
+
+        focused_seconds = event_metrics["focused_seconds"]
+        hidden_seconds = event_metrics["hidden_seconds"]
+        hidden_count = max(
+            event_metrics["hidden_count"],
+            session_row["context_switch_count"] or 0,
+        )
+        focus_ratio = focused_seconds / duration_seconds if duration_seconds > 0 and focused_seconds > 0 else 0
+
+        total_input_events = (
+            event_metrics["mouse_move_count"]
+            + event_metrics["mouse_click_count"]
+            + event_metrics["mouse_scroll_count"]
+            + event_metrics["keyboard_keydown_count"]
+        )
+        total_active_ms = (
+            event_metrics["mouse_active_milliseconds"]
+            + event_metrics["keyboard_active_milliseconds"]
+        )
+        active_ratio = total_active_ms / (duration_seconds * 1000) if duration_seconds > 0 else 0
+
+        speed_signal = 0.0
+        if expected_duration_seconds > 0 and duration_seconds > 0:
+            speed_signal = max(0.0, min(1.0, 1 - (duration_seconds / expected_duration_seconds)))
+        if quiz_seconds > 0:
+            speed_signal = max(speed_signal, max(0.0, min(1.0, (60 - quiz_seconds) / 60)))
+
+        feature_values = {
+            "speed_signal": speed_signal,
+            "wrong_answer_signal": min(1.0, event_metrics["wrong_count"] / 10),
+            "answer_change_signal": min(1.0, event_metrics["total_answer_changes"] / 10),
+            "page_focus_signal": max(
+                min(1.0, hidden_count / 5),
+                max(0.0, min(1.0, (0.6 - focus_ratio) / 0.6)),
+            ),
+            "low_input_signal": max(
+                max(0.0, min(1.0, (0.08 - active_ratio) / 0.08)),
+                max(0.0, min(1.0, (15 - total_input_events) / 15)),
+            )
+            if duration_seconds >= 120
+            else 0.0,
+            "face_absence_signal": max(
+                min(1.0, event_metrics["face_absent_seconds"] / 60),
+                min(1.0, event_metrics["longest_face_absence_seconds"] / 20),
+            ),
+            "multiple_faces_signal": max(
+                min(1.0, event_metrics["multiple_faces_seconds"] / 10),
+                min(1.0, event_metrics["multiple_faces_detected_count"]),
+            ),
+        }
+
+        weights = params.get("weights") or {}
+        default_weights = {
+            "speed_signal": 1.25,
+            "wrong_answer_signal": 0.55,
+            "answer_change_signal": 0.95,
+            "page_focus_signal": 1.05,
+            "low_input_signal": 0.85,
+            "face_absence_signal": 1.15,
+            "multiple_faces_signal": 1.15,
+        }
+        intercept = float(params.get("intercept", -2.4))
+        logit = intercept
+        contributions = []
+
+        for feature_name, feature_value in feature_values.items():
+            weight = float(weights.get(feature_name, default_weights[feature_name]))
+            contribution = weight * feature_value
+            logit += contribution
+            contributions.append((feature_name, contribution, feature_value))
+
+        risk_score = 1 / (1 + exp(-logit))
+        feature_labels = {
+            "speed_signal": "完成或作答速度偏快",
+            "wrong_answer_signal": "答錯題數偏高",
+            "answer_change_signal": "改答次數偏高",
+            "page_focus_signal": "頁面焦點比例偏低或切頁偏多",
+            "low_input_signal": "滑鼠鍵盤互動偏低",
+            "face_absence_signal": "鏡頭離開畫面偏久",
+            "multiple_faces_signal": "鏡頭偵測多人出現",
+        }
+        top_factors = [
+            feature_labels[feature_name]
+            for feature_name, contribution, feature_value in sorted(
+                contributions,
+                key=lambda item: item[1],
+                reverse=True,
+            )
+            if contribution > 0 and feature_value > 0
+        ]
+
+        return {
+            "risk_score": risk_score,
+            "threshold": float(params.get("threshold", 0.65)),
+            "top_factors": top_factors or ["多項行為特徵接近異常樣態"],
+        }
 
     @staticmethod
     def _load_event_metrics(db: Session, session_id: str, session_started_at: datetime) -> dict:
