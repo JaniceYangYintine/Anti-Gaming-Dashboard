@@ -112,86 +112,72 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  %% ===== Styles =====
-  classDef start fill:#E0F2FE,stroke:#0284C7,stroke-width:1.5px,color:#082F49
-  classDef event fill:#F0FDF4,stroke:#16A34A,stroke-width:1.5px,color:#052E16
-  classDef rule fill:#FFF7ED,stroke:#EA580C,stroke-width:1.5px,color:#431407
-  classDef low fill:#F8FAFC,stroke:#64748B,stroke-width:1.5px,color:#0F172A
-  classDef medium fill:#FEF3C7,stroke:#D97706,stroke-width:1.5px,color:#451A03
-  classDef high fill:#FEE2E2,stroke:#DC2626,stroke-width:1.5px,color:#450A0A
-  classDef manager fill:#EEF2FF,stroke:#4F46E5,stroke-width:1.5px,color:#1E1B4B
-  classDef audit fill:#FAF5FF,stroke:#9333EA,stroke-width:1.5px,color:#3B0764
-  classDef end fill:#ECFDF5,stroke:#059669,stroke-width:1.5px,color:#064E3B
+  A["學員完成測驗"] --> B["彙整行為證據"]
+  B --> C["規則式風險引擎"]
+  B --> D["機器學習輔助判斷"]
 
-  start["學員完成測驗<br/>session_completed"]:::start
-  collect["彙整行為證據<br/>作答時間 / 改答 / 切頁 / 互動 / 鏡頭"]:::event
+  C --> E{"是否命中風險"}
+  D --> F["ML 輔助結果"]
 
-  rules["規則式風險引擎<br/>主體判斷"]:::rule
-  ml["機器學習輔助<br/>Logistic Regression + Decision Tree"]:::rule
+  E -->|未命中| G["正常完成學習"]
+  E -->|低風險| H["低風險 Flag"]
+  E -->|中風險| I["中風險 Flag"]
+  E -->|高風險| J["高風險 Flag"]
+  F -->|命中| I
 
-  low["低風險<br/>BLIND_GUESSING"]:::low
-  medium["中風險<br/>REPEATED_ANSWER_CHANGES<br/>LOW_INPUT_ACTIVITY<br/>LOGISTIC_REGRESSION_RISK<br/>DECISION_TREE_RISK"]:::medium
-  high["高風險<br/>IMPOSSIBLE_SPEED<br/>LOW_PAGE_FOCUS_RATIO<br/>LONG_FACE_ABSENCE<br/>MULTIPLE_FACES_PRESENT"]:::high
+  H --> K["保留積分與資格"]
+  I --> L["積分與本週獎勵歸零"]
+  J --> M["積分歸零並鎖定資格"]
 
-  noFlag["未命中風險<br/>正常完成學習"]:::end
-  flag["建立 Risk Flag<br/>寫入 flagged_sessions"]:::rule
+  K --> N["Risk Inbox"]
+  L --> N
+  M --> N
 
-  penaltyLow["低風險處理<br/>保留積分與資格"]:::low
-  penaltyMedium["中風險處理<br/>排行榜積分與本週獎勵歸零<br/>不鎖定、不凍結"]:::medium
-  penaltyHigh["高風險處理<br/>積分歸零<br/>Streak Shield 鎖定<br/>模組完成資格凍結"]:::high
+  N --> O["主管查看 Flag Detail"]
+  O --> P["查看風險原因 Timeline Evidence"]
+  P --> Q{"主管審核決策"}
 
-  inbox["主管 Dashboard<br/>Risk Inbox"]:::manager
-  detail["Flag Detail<br/>風險原因 / Timeline / Evidence"]:::manager
-  decision{"主管審核決策"}:::manager
+  Q -->|誤判核准| R["Approved"]
+  Q -->|作廢重修| S["Voided"]
+  Q -->|通報 HR| T["Escalated to HR"]
 
-  approved["核准為誤判<br/>approved"]:::end
-  voided["作廢重修<br/>voided"]:::medium
-  hr["通報 HR<br/>escalated_to_hr"]:::high
+  R --> U["寫入 Audit Trail"]
+  S --> U
+  T --> U
 
-  audit["寫入 Audit Trail<br/>不可變稽核紀錄"]:::audit
-  email["Email 通知<br/>重修通知 / HR 調查通知"]:::audit
-  recompute["重新計算同 session 狀態<br/>確認是否仍有未核准高風險"]:::rule
-  final["Dashboard / Learner 狀態同步"]:::end
+  S --> V["寄送重修通知"]
+  T --> W["寄送 HR 調查通知"]
 
-  start --> collect
-  collect --> rules
-  collect --> ml
+  U --> X["重新計算 Session 狀態"]
+  V --> X
+  W --> X
 
-  rules --> low
-  rules --> medium
-  rules --> high
-  ml --> medium
-  rules --> noFlag
+  X --> Y{"是否仍有未核准高風險"}
+  Y -->|是| Z["維持鎖定與凍結"]
+  Y -->|否| AA["恢復或維持可用狀態"]
 
-  low --> flag
-  medium --> flag
-  high --> flag
+  Z --> AB["Dashboard 與 Learner 狀態同步"]
+  AA --> AB
 
-  flag --> penaltyLow
-  flag --> penaltyMedium
-  flag --> penaltyHigh
+  classDef start fill:#E0F2FE,stroke:#0284C7,stroke-width:2px,color:#082F49;
+  classDef evidence fill:#F0FDF4,stroke:#16A34A,stroke-width:2px,color:#052E16;
+  classDef engine fill:#FFF7ED,stroke:#EA580C,stroke-width:2px,color:#431407;
+  classDef low fill:#F8FAFC,stroke:#64748B,stroke-width:2px,color:#0F172A;
+  classDef medium fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#451A03;
+  classDef high fill:#FEE2E2,stroke:#DC2626,stroke-width:2px,color:#450A0A;
+  classDef manager fill:#EEF2FF,stroke:#4F46E5,stroke-width:2px,color:#1E1B4B;
+  classDef audit fill:#FAF5FF,stroke:#9333EA,stroke-width:2px,color:#3B0764;
+  classDef done fill:#ECFDF5,stroke:#059669,stroke-width:2px,color:#064E3B;
 
-  penaltyLow --> inbox
-  penaltyMedium --> inbox
-  penaltyHigh --> inbox
-
-  inbox --> detail
-  detail --> decision
-
-  decision --> approved
-  decision --> voided
-  decision --> hr
-
-  approved --> audit
-  voided --> audit
-  hr --> audit
-
-  voided --> email
-  hr --> email
-
-  audit --> recompute
-  email --> recompute
-  recompute --> final
+  class A start;
+  class B evidence;
+  class C,D,E,F engine;
+  class G,K,AA,AB done;
+  class H low;
+  class I,L medium;
+  class J,M,Z high;
+  class N,O,P,Q,R,S,T manager;
+  class U,V,W,X,Y audit;
 
 ```
 
