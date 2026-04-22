@@ -41,264 +41,158 @@
 - ML 命中時只產生中風險，不直接取代高風險規則，也不直接作為最終懲罰依據。
 - 決策樹可用本機 `scikit-learn` 訓練，但 production 只讀 JSON artifact 做輕量推論。
 
-## 圖 1：美化版系統架構總覽
+## 圖 1：系統架構圖
 
 ```mermaid
-%%{init: {
-  "theme": "base",
-  "themeVariables": {
-    "background": "#ffffff",
-    "primaryColor": "#EEF6FF",
-    "primaryTextColor": "#0F172A",
-    "primaryBorderColor": "#2563EB",
-    "lineColor": "#475569",
-    "secondaryColor": "#F8FAFC",
-    "tertiaryColor": "#FDF2F8",
-    "fontFamily": "Inter, Noto Sans TC, Arial"
-  },
-  "flowchart": {
-    "curve": "basis",
-    "nodeSpacing": 36,
-    "rankSpacing": 44
-  }
-}}%%
 flowchart LR
-  learner["Learner Simulator<br/>`frontend/learner.html`<br/><br/>Session 建立 / 作答 / 鏡頭偵測"]
-  dashboard["Supervisor Dashboard<br/>`frontend/index.html`<br/><br/>Risk Inbox / Detail / Resolution"]
+  %% ===== Styles =====
+  classDef user fill:#EAF4FF,stroke:#2563EB,stroke-width:1.5px,color:#0F172A
+  classDef frontend fill:#F0FDF4,stroke:#16A34A,stroke-width:1.5px,color:#052E16
+  classDef backend fill:#FFF7ED,stroke:#EA580C,stroke-width:1.5px,color:#431407
+  classDef db fill:#FDF2F8,stroke:#DB2777,stroke-width:1.5px,color:#500724
+  classDef risk fill:#FEF2F2,stroke:#DC2626,stroke-width:1.5px,color:#450A0A
+  classDef ml fill:#EEF2FF,stroke:#4F46E5,stroke-width:1.5px,color:#1E1B4B
+  classDef audit fill:#FAF5FF,stroke:#9333EA,stroke-width:1.5px,color:#3B0764
 
-  subgraph frontend["Frontend Layer"]
-    direction TB
-    learner
-    dashboard
-  end
+  learner["學員<br/>Learner"]:::user
+  manager["主管 / 合規人員<br/>Manager"]:::user
 
-  subgraph api["FastAPI API Layer"]
-    direction TB
-    health["`GET /health`"]
-    sessions["`/api/v1/sessions`<br/>create / recent / leaderboard / detail"]
-    events["`POST /api/v1/session-events`"]
-    rules["`GET /api/v1/rules`"]
-    flags["`GET /api/v1/flags`<br/>`GET /api/v1/flags/{id}`"]
-    resolution["`POST /api/v1/flags/{id}/resolution`"]
-  end
+  learnerUI["學員測驗平台<br/>Learner Simulator"]:::frontend
+  dashboard["合規風險監控儀表板<br/>Dashboard"]:::frontend
 
-  subgraph services["Application Services"]
-    direction TB
-    sessionService["SessionService<br/><span style='font-size:12px'>session lifecycle / leaderboard / detail</span>"]
-    eventService["SessionEventService<br/><span style='font-size:12px'>event validation / persistence / completion trigger</span>"]
-    ruleEval["RuleEvaluationService<br/><span style='font-size:12px'>rule scan / severity / penalty sync</span>"]
-    mlEval["ML Auxiliary Scoring<br/><span style='font-size:12px'>logistic score / decision tree JSON</span>"]
-    flagService["FlagService<br/><span style='font-size:12px'>risk inbox / flag detail / resolution / audit</span>"]
-    mailService["NotificationService<br/><span style='font-size:12px'>SMTP notification</span>"]
-    config["Settings / Config<br/><span style='font-size:12px'>CORS / DB / SMTP / env</span>"]
-  end
+  api["FastAPI Backend<br/>REST API"]:::backend
+  sessionSvc["Session Service<br/>建立與查詢測驗"]:::backend
+  eventSvc["Session Event Service<br/>蒐集行為事件"]:::backend
+  ruleSvc["Rule Evaluation Service<br/>規則式風險判斷"]:::risk
+  flagSvc["Flag Service<br/>Risk Inbox / 審核"]:::risk
+  notifySvc["Notification Service<br/>Email 通知"]:::backend
 
-  subgraph db["PostgreSQL"]
-    direction TB
-    master["Core Master Data<br/>`agents` / `managers` / `courses`"]
-    rulesTable["Rules Store<br/>`compliance_rules`"]
-    sessionsTable["Learning Facts<br/>`learning_sessions`"]
-    eventsTable["Behavior Evidence<br/>`session_events`"]
-    flagsTable["Risk Inbox Source<br/>`flagged_sessions`"]
-    auditTable["Immutable Audit Trail<br/>`compliance_audit_log`"]
-  end
+  lr["Logistic Regression<br/>中風險輔助"]:::ml
+  dt["Decision Tree JSON Artifact<br/>中風險輔助"]:::ml
 
-  learner -->|"建立 session / 發送 evidence"| sessions
-  learner -->|"card_swiped / answer_changed / page_dwell_summary / camera_monitor_summary"| events
-  learner -->|"同步分數與懲罰狀態"| sessions
+  db[("Neon PostgreSQL<br/>正式資料庫")]:::db
+  audit["Audit Trail<br/>不可變稽核紀錄"]:::audit
 
-  dashboard -->|"查 recent sessions / leaderboard"| sessions
-  dashboard -->|"查 rules / flags / detail"| rules
-  dashboard --> flags
-  dashboard -->|"主管審核"| resolution
+  learner --> learnerUI
+  manager --> dashboard
 
-  health --> config
-  sessions --> sessionService
-  events --> eventService
-  rules --> sessionService
-  rules --> ruleEval
-  flags --> flagService
-  resolution --> flagService
+  learnerUI -->|"POST /api/v1/sessions"| api
+  learnerUI -->|"POST /api/v1/session-events"| api
+  learnerUI -->|"GET /health"| api
 
-  sessionService --> master
-  sessionService --> sessionsTable
-  sessionService --> eventsTable
-  sessionService --> flagsTable
+  dashboard -->|"GET /api/v1/rules"| api
+  dashboard -->|"GET /api/v1/sessions/recent"| api
+  dashboard -->|"GET /api/v1/flags"| api
+  dashboard -->|"POST /api/v1/flags/{id}/resolution"| api
 
-  eventService --> sessionsTable
-  eventService --> eventsTable
-  eventService --> ruleEval
-  ruleEval --> mlEval
+  api --> sessionSvc
+  api --> eventSvc
+  api --> flagSvc
 
-  ruleEval --> rulesTable
-  ruleEval --> sessionsTable
-  ruleEval --> eventsTable
-  ruleEval --> flagsTable
-  mlEval --> rulesTable
-  mlEval --> flagsTable
+  sessionSvc --> db
+  eventSvc --> db
+  eventSvc -->|"session_completed"| ruleSvc
 
-  flagService --> flagsTable
-  flagService --> sessionsTable
-  flagService --> eventsTable
-  flagService --> rulesTable
-  flagService --> auditTable
-  flagService --> master
-  flagService --> mailService
+  ruleSvc -->|"規則式主體"| db
+  ruleSvc --> lr
+  ruleSvc --> dt
+  lr -->|"LOGISTIC_REGRESSION_RISK<br/>Medium"| ruleSvc
+  dt -->|"DECISION_TREE_RISK<br/>Medium"| ruleSvc
 
-  mailService -. SMTP .-> notify["SMTP Server / Gmail"]
+  ruleSvc -->|"建立 flagged_sessions"| db
+  flagSvc -->|"讀取 / 更新 flags"| db
+  flagSvc -->|"寫入審核結果"| audit
+  audit --> db
+  flagSvc --> notifySvc
+  notifySvc -->|"voided / escalated_to_hr"| manager
 
-  classDef front fill:#FFF7ED,stroke:#EA580C,stroke-width:2px,color:#431407;
-  classDef apiNode fill:#EEF6FF,stroke:#2563EB,stroke-width:2px,color:#0F172A;
-  classDef svc fill:#ECFDF3,stroke:#16A34A,stroke-width:2px,color:#14532D;
-  classDef data fill:#F5F3FF,stroke:#7C3AED,stroke-width:2px,color:#3B0764;
-  classDef audit fill:#FDF2F8,stroke:#DB2777,stroke-width:2px,color:#831843;
-  classDef ext fill:#F8FAFC,stroke:#64748B,stroke-width:2px,color:#334155;
-
-  class learner,dashboard front;
-  class health,sessions,events,rules,flags,resolution apiNode;
-  class sessionService,eventService,ruleEval,mlEval,flagService,mailService,config svc;
-  class master,rulesTable,sessionsTable,eventsTable,flagsTable data;
-  class auditTable audit;
-  class notify ext;
 ```
 
-## 架構解讀
-
-1. 前端分成兩個角色視角：
-   - 學員端負責產生可追溯 evidence
-   - 主管端負責查看風險、審核與追蹤
-2. `session_events` 是風險判斷的核心證據池，並不是只看最終分數。
-3. `session_completed` 是自動判斷的觸發點，會把 session 摘要與 event metadata 一起送進規則引擎。
-4. `flagged_sessions` 是風險收件匣來源，同時也承載當前懲罰狀態。
-5. `compliance_audit_log` 與 `flagged_sessions` 分工不同：
-   - `flagged_sessions` 管現在狀態
-   - `compliance_audit_log` 保留永久審核軌跡
-
-## 圖 2：美化版風險判斷與主管處理流程圖
+## 圖 2：風險判斷與主管處理流程圖
 
 ```mermaid
-%%{init: {
-  "theme": "base",
-  "themeVariables": {
-    "background": "#ffffff",
-    "primaryColor": "#F8FAFC",
-    "primaryTextColor": "#0F172A",
-    "primaryBorderColor": "#334155",
-    "lineColor": "#475569",
-    "fontFamily": "Inter, Noto Sans TC, Arial"
-  },
-  "flowchart": {
-    "curve": "basis",
-    "nodeSpacing": 34,
-    "rankSpacing": 42
-  }
-}}%%
 flowchart TD
-  start(["學員開始課程"])
-  create["建立 `learning_sessions`"]
-  learn["閱讀卡片 / 回答題目 / 鍵鼠互動 / 頁面切換"]
-  camera["鏡頭 presence 偵測<br/>FaceDetector 或 MediaPipe fallback"]
-  evidence["寫入 `session_events`<br/>含 answer_changed / mouse_activity / keyboard_activity / page_dwell_summary / camera_monitor_summary"]
-  quiz["送出 `quiz_submitted`<br/>更新 quiz_seconds / quiz_score"]
-  complete["送出 `session_completed`"]
-  trigger["SessionEventService 觸發 RuleEvaluationService"]
+  %% ===== Styles =====
+  classDef start fill:#E0F2FE,stroke:#0284C7,stroke-width:1.5px,color:#082F49
+  classDef event fill:#F0FDF4,stroke:#16A34A,stroke-width:1.5px,color:#052E16
+  classDef rule fill:#FFF7ED,stroke:#EA580C,stroke-width:1.5px,color:#431407
+  classDef low fill:#F8FAFC,stroke:#64748B,stroke-width:1.5px,color:#0F172A
+  classDef medium fill:#FEF3C7,stroke:#D97706,stroke-width:1.5px,color:#451A03
+  classDef high fill:#FEE2E2,stroke:#DC2626,stroke-width:1.5px,color:#450A0A
+  classDef manager fill:#EEF2FF,stroke:#4F46E5,stroke-width:1.5px,color:#1E1B4B
+  classDef audit fill:#FAF5FF,stroke:#9333EA,stroke-width:1.5px,color:#3B0764
+  classDef end fill:#ECFDF5,stroke:#059669,stroke-width:1.5px,color:#064E3B
 
-  metrics["彙整 evidence metrics<br/>wrong_count / answer_changes / focus_ratio / face_absence / multiple_faces"]
-  active{"讀取 active rules"}
+  start["學員完成測驗<br/>session_completed"]:::start
+  collect["彙整行為證據<br/>作答時間 / 改答 / 切頁 / 互動 / 鏡頭"]:::event
 
-  r1["IMPOSSIBLE_SPEED"]
-  r2["BLIND_GUESSING"]
-  r3["REPEATED_ANSWER_CHANGES"]
-  rMl1["LOGISTIC_REGRESSION_RISK<br/>中風險輔助"]
-  rMl2["DECISION_TREE_RISK<br/>中風險輔助"]
-  r4["LOW_INPUT_ACTIVITY"]
-  r5["LOW_PAGE_FOCUS_RATIO"]
-  r6["LONG_FACE_ABSENCE"]
-  r7["MULTIPLE_FACES_PRESENT"]
+  rules["規則式風險引擎<br/>主體判斷"]:::rule
+  ml["機器學習輔助<br/>Logistic Regression + Decision Tree"]:::rule
 
-  hit{"是否命中任一規則"}
-  normal["不建立 flag<br/>保留正常積分與完成資格"]
-  createFlag["寫入 `flagged_sessions`<br/>附帶 severity / risk_reason / penalty state"]
+  low["低風險<br/>BLIND_GUESSING"]:::low
+  medium["中風險<br/>REPEATED_ANSWER_CHANGES<br/>LOW_INPUT_ACTIVITY<br/>LOGISTIC_REGRESSION_RISK<br/>DECISION_TREE_RISK"]:::medium
+  high["高風險<br/>IMPOSSIBLE_SPEED<br/>LOW_PAGE_FOCUS_RATIO<br/>LONG_FACE_ABSENCE<br/>MULTIPLE_FACES_PRESENT"]:::high
 
-  severity{"風險等級"}
-  low["Low<br/>保留積分與模組資格<br/>主管可追蹤"]
-  medium["Medium<br/>排行榜積分與週獎勵歸零"]
-  high["High<br/>積分歸零 + Streak Shield 鎖定 + 模組完成凍結"]
+  noFlag["未命中風險<br/>正常完成學習"]:::end
+  flag["建立 Risk Flag<br/>寫入 flagged_sessions"]:::rule
 
-  inbox["Dashboard Risk Inbox"]
-  detail["Flag Detail / Timeline / Audit Trail"]
-  decision{"主管審核"}
+  penaltyLow["低風險處理<br/>保留積分與資格"]:::low
+  penaltyMedium["中風險處理<br/>排行榜積分與本週獎勵歸零<br/>不鎖定、不凍結"]:::medium
+  penaltyHigh["高風險處理<br/>積分歸零<br/>Streak Shield 鎖定<br/>模組完成資格凍結"]:::high
 
-  approved["`approved`<br/>誤判或可接受"]
-  voided["`voided`<br/>作廢重修"]
-  escalated["`escalated_to_hr`<br/>通報 HR"]
+  inbox["主管 Dashboard<br/>Risk Inbox"]:::manager
+  detail["Flag Detail<br/>風險原因 / Timeline / Evidence"]:::manager
+  decision{"主管審核決策"}:::manager
 
-  audit["寫入 `compliance_audit_log`"]
-  resync["重新同步同 session 全部 flag 的懲罰狀態"]
-  notify["NotificationService<br/>依動作寄送 email"]
-  hasRisk{"是否仍有未核准風險"}
-  restore["恢復 session 積分與資格"]
-  keep["維持懲罰狀態"]
-  endNode(["狀態回寫 Dashboard / Learner"])
+  approved["核准為誤判<br/>approved"]:::end
+  voided["作廢重修<br/>voided"]:::medium
+  hr["通報 HR<br/>escalated_to_hr"]:::high
 
-  start --> create --> learn --> camera --> evidence --> quiz --> complete --> trigger --> metrics --> active
-  active --> r1
-  active --> r2
-  active --> r3
-  active --> rMl1
-  active --> rMl2
-  active --> r4
-  active --> r5
-  active --> r6
-  active --> r7
+  audit["寫入 Audit Trail<br/>不可變稽核紀錄"]:::audit
+  email["Email 通知<br/>重修通知 / HR 調查通知"]:::audit
+  recompute["重新計算同 session 狀態<br/>確認是否仍有未核准高風險"]:::rule
+  final["Dashboard / Learner 狀態同步"]:::end
 
-  r1 --> hit
-  r2 --> hit
-  r3 --> hit
-  rMl1 --> hit
-  rMl2 --> hit
-  r4 --> hit
-  r5 --> hit
-  r6 --> hit
-  r7 --> hit
+  start --> collect
+  collect --> rules
+  collect --> ml
 
-  hit -->|"否"| normal --> endNode
-  hit -->|"是"| createFlag --> severity
+  rules --> low
+  rules --> medium
+  rules --> high
+  ml --> medium
+  rules --> noFlag
 
-  severity -->|"low"| low --> inbox
-  severity -->|"medium"| medium --> inbox
-  severity -->|"high"| high --> inbox
+  low --> flag
+  medium --> flag
+  high --> flag
 
-  inbox --> detail --> decision
-  decision --> approved --> audit
-  decision --> voided --> audit
-  decision --> escalated --> audit
+  flag --> penaltyLow
+  flag --> penaltyMedium
+  flag --> penaltyHigh
 
-  voided --> notify
-  escalated --> notify
+  penaltyLow --> inbox
+  penaltyMedium --> inbox
+  penaltyHigh --> inbox
 
-  audit --> resync --> hasRisk
-  notify --> hasRisk
-  hasRisk -->|"否"| restore --> endNode
-  hasRisk -->|"是"| keep --> endNode
+  inbox --> detail
+  detail --> decision
 
-  classDef startEnd fill:#0F172A,stroke:#0F172A,stroke-width:2px,color:#FFFFFF;
-  classDef step fill:#EEF6FF,stroke:#2563EB,stroke-width:2px,color:#0F172A;
-  classDef detect fill:#F5F3FF,stroke:#7C3AED,stroke-width:2px,color:#4C1D95;
-  classDef decision fill:#FFF7ED,stroke:#EA580C,stroke-width:2px,color:#7C2D12;
-  classDef lowClass fill:#ECFDF3,stroke:#16A34A,stroke-width:2px,color:#14532D;
-  classDef medClass fill:#FEF9C3,stroke:#CA8A04,stroke-width:2px,color:#713F12;
-  classDef highClass fill:#FFF1F2,stroke:#E11D48,stroke-width:2px,color:#881337;
-  classDef auditClass fill:#FDF2F8,stroke:#DB2777,stroke-width:2px,color:#831843;
+  decision --> approved
+  decision --> voided
+  decision --> hr
 
-  class start,endNode startEnd;
-  class create,learn,camera,evidence,quiz,complete,trigger,metrics,inbox,detail,resync,restore,keep,normal,createFlag,notify step;
-  class r1,r2,r3,r4,r5,r6,r7,active detect;
-  class hit,severity,decision,hasRisk decision;
-  class low lowClass;
-  class medium medClass;
-  class high highClass;
-  class approved,voided,escalated,audit auditClass;
+  approved --> audit
+  voided --> audit
+  hr --> audit
+
+  voided --> email
+  hr --> email
+
+  audit --> recompute
+  email --> recompute
+  recompute --> final
+
 ```
 
 ## 流程重點判讀
